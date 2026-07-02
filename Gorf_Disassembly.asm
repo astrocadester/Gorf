@@ -4720,7 +4720,7 @@ L115C:	ret
 
 	DB      _ENTER          ; TERSE Code
         DW      _LITword
-        DW      $D037
+        DW      SKILLFACTOR
         DW      _Bat
         DB      $76
         DB      $00
@@ -5428,7 +5428,7 @@ WPNOZ:          ld	hl,$D00B
                 ld	c,$10
                 in	e,(c)
                 call	wpb_bang		; Write byte to protected memory
-                ld	hl,LD03C
+                ld	hl,CRASHCTR
                 ld	a,(hl)
                 cp	$03
                 jp	c,$172D
@@ -7687,7 +7687,7 @@ GORF_UNK6:
 	ld	hl,$27A1
 	ld	iy,$D0E1
 	jp	$0FAC
-	ld	a,($D038)
+	ld	a,(PLAYERUP)
 	ld	hl,P1FBCTR
 	and	a
 	jp	z,$27E8
@@ -8798,13 +8798,13 @@ GORF_UNK6:
 	and	$30
 	cp	$30
 	jr	nz,$2F14
-	ld	a,(CREDITS)
+	ld	a,(COINSIN)
 	and	a
 	ret	z
 	in	a,($10)
 	and	$10
 	jr	z,$2F14
-	ld	a,(CREDITS)
+	ld	a,(COINSIN)
 	cp	$02
 	ret	c
 	in	a,($10)
@@ -9367,7 +9367,7 @@ GORF_UNK6:
 	push	hl
 	ld	de,$0030
 	ld	hl,$0100
-	ld	a,($D037)
+	ld	a,(SKILLFACTOR)
 	and	a
 	jp	z,$3318
 	ld	hl,_COM
@@ -9950,22 +9950,22 @@ GORF_UNK6:
 	DW	$D088
 	DW	_bang
         DW	_LITword
-	DW	$D036					; current screen
+	DW	MISSIONCTR				; Mission counter
 	DW	_p1
 	DW 	_LITbyte
 	DB	$02
         DW	_LITword
-	DW	$D032
+	DW	P1FBCTR
 	DW	_pwb
         DW	_LITword
-	DW	$D038
+	DW	PLAYERUP
 	DW	_p0
         DW	_LITword
-	DW	$D039
+	DW	NPLAYERS
 	DW	_p0
 	DW	SHUTUP
         DW	_LITword
-	DW	$D037					; Rank
+	DW	SKILLFACTOR				; Rank
 	DW	_p0
 	DW 	_RETURN
 
@@ -16710,7 +16710,7 @@ L8000:	and	l
 	sub	h
 	or	(hl)
 	sub	h
-	ld	a,($D037)
+	ld	a,(SKILLFACTOR)
 	and	a
 	jp	nz,$96D1
 	ld	a,r
@@ -24148,7 +24148,7 @@ LBF2D:          DB      _ENTER
                 DW      DEMOMODE
                 DW      $1667           ; Write protected byte WPBONE???
                 DW      _LITword
-                DW      LD03C
+                DW      CRASHCTR
                 DW      $166F
                 DW      _LITbyte
                 DB      $13
@@ -24166,10 +24166,10 @@ LBF50:          DW      _LITword
                 DW      $D0AF
                 DW      _plusbang
                 DW      _LITword
-                DW      $D038
+                DW      PLAYERUP
                 DW      $166F
                 DW      _LITword
-                DW      $D037
+                DW      SKILLFACTOR
                 DW      $166F
                 DW      LB69D           ; Jump
                 DW      $BD4E           ; Jump
@@ -24178,7 +24178,7 @@ LBF50:          DW      _LITword
                 DW      $D002
                 DW      _Bat
                 DW      _LITword
-                DW      LD009
+                DW      COINS
                 DW      _Bat
 
 
@@ -24305,10 +24305,10 @@ LBFB3:          DW	_WPCLEAR	; ??? Large block of code to do with setup
                 DW      $03EA           ; ???
                 DW      LBFEB           ; Data for above ???
                 DW      _LITword
-                DW      LD03C           ; Data for above ???
+                DW      CRASHCTR           ; Data for above ???
                 DW      _PINC           ; Something about writing to protected memory ???
                 DW      _LITword
-                DW      LD039
+                DW      NPLAYERS
                 DW      _Bat
                 DW      $03EA           ; ??? Some sort of compare and jump over thing
                 DW      LBFE9           ; Data
@@ -24330,22 +24330,60 @@ LBFB3:          DW	_WPCLEAR	; ??? Large block of code to do with setup
 ;****************************************************************************************
 ; Memory location EQUATES begin here
 ;****************************************************************************************
-
+;	{ BLOCK 0030 }
+;	( COIN RAM-*WRITE PROTECT* , RAM ORDER CAN BE CRUCIAL ) HEX
+;	RAMBASE C= WPRAMSTART RAMBASE 1+ VPTR !
+;	0 BV= DEMOMODE ( GAME OVER MODE FLAG )
+;	0 BV= COINFRAC 0 BV= COINSIN
+;	0 BV= COINCOUNTERR ( holds # of ticks to hold counter1 on )
+;	0 BV= COINBACKLOGR ( holds # of coins owed to right counter )
+;	0 BV= COINCOUNTERL ( holds # of ticks to hold counter2 on )
+;	0 BV= COINBACKLOGL 0 BV= COUNTERBITS
+;	0 BV= COINS? 0 BV= SLAM? ( flags for COINS and SLAM events )
+;	0 BV= OLDCREDITS ( old reading from coin port 10H )
+;	3 BA= P1SCR 0 BV= P1HSP 0F BA= HISCR2 : HS2 0 HISCR2 ;
+;	3 BA= P2SCR 0 BV= P2HSP 0F BA= HISCR4 : HS4 0 HISCR4 ;
+;	0 BV= P1FBCTR 0 BV= P2FBCTR 0 BV= RIP 0 BV= MISSION
+;	0 BV= MISSIONCTR 0 BV= SKILLFACTOR 0 BV= PLAYERUP
+;	0 BV= NPLAYERS 0 BV= INITFB 0 BV= COCKTAIL 0 BV= CRASHCTR
+;	0 V= COMBO2 3 BA= CRBASES 0 V= COMBO1
+;
 WPRAMSTART	EQU	$D000           ; Beginning of Static RAM
 DEMOMODE	EQU	$D001
-CREDITS     	EQU	$D003
-LD009           EQU     $D009
+COINFRAC	EQU 	$D002
+COINSIN     	EQU	$D003
+COINCOUNTERR	EQU	$D004
+COINBACKLOGR	EQU	$D005
+COINCOUNTERL	EQU	$D006
+COINBACKLOGL	EQU	$D007
+COUNTERBITS	EQU	$D008
+COINS		EQU	$D009
+SLAM		EQU	$D00A
+OLDCREDITS	EQU	$D00B
+P1SCR		EQU	$D00C		; to $D00E
+P1HSP		EQU	$D00F
+HISCR2		EQU	$D010		; to $D01E
+P2SCR		EQU	$D01F		; to $D021
+P2HSP		EQU	$D022
+HISCR4		EQU	$D023		; to $D031
 P1FBCTR         EQU	$D032
 P2FBCTR         EQU     $D033
-LD039           EQU     $D039
+RIP		EQU	$D034
+MISSION		EQU	$D035
+MISSIONCTR	EQU	$D036
+SKILLFACTOR	EQU	$D037
+PLAYERUP	EQU	$D038
+NPLAYERS	EQU	$D039
+INITFB		EQU	$D03A
 COCKTAIL	EQU	$D03B
-LD03C           EQU     $D03C
-COMBO2          EQU     $D03D
-COMBO1          EQU     $D042
+CRASHCTR	EQU	$D03C
+COMBO2          EQU     $D03D		; to $D03E ? (Vector)
+CRBASES		EQU	$D03F		; to $D041
+COMBO1          EQU     $D042		; to $D043
+
 RELABS		EQU	$D080
 FFRELABS        EQU     $D083
 RND_SEED	EQU	$D0AB
-
 
 ISP             EQU     $BFB1	        ; TERSE Instruction Stack Pointer (ISP)
 PSP             EQU     $D2C0	        ; TERSE Parameter Stack Pointer   (PSP)
@@ -24493,26 +24531,7 @@ CF      _ENTER          $CF is the hex code for RST $08 when _ENTER is called
 ;	0D C= INFBK  0E C= INMOD  0F C= INLIN  8 C= CONCM 0F C= HORAF
 ;	0C C= MAGIC  19 C= XPAND  8 C= INTST  0E C= VERAF -->
 ;
-;##########################################################################################
 
-;	{ BLOCK 0030 }
-;	( COIN RAM-*WRITE PROTECT* , RAM ORDER CAN BE CRUCIAL ) HEX
-;	RAMBASE C= WPRAMSTART RAMBASE 1+ VPTR !
-;	0 BV= DEMOMODE ( GAME OVER MODE FLAG )
-;	0 BV= COINFRAC 0 BV= COINSIN
-;	0 BV= COINCOUNTERR ( holds # of ticks to hold counter1 on )
-;	0 BV= COINBACKLOGR ( holds # of coins owed to right counter )
-;	0 BV= COINCOUNTERL ( holds # of ticks to hold counter2 on )
-;	0 BV= COINBACKLOGL 0 BV= COUNTERBITS
-;	0 BV= COINS? 0 BV= SLAM? ( flags for COINS and SLAM events )
-;	0 BV= OLDCREDITS ( old reading from coin port 10H )
-;	3 BA= P1SCR 0 BV= P1HSP 0F BA= HISCR2 : HS2 0 HISCR2 ;
-;	3 BA= P2SCR 0 BV= P2HSP 0F BA= HISCR4 : HS4 0 HISCR4 ;
-;	0 BV= P1FBCTR 0 BV= P2FBCTR 0 BV= RIP 0 BV= MISSION
-;	0 BV= MISSIONCTR 0 BV= SKILLFACTOR 0 BV= PLAYERUP
-;	0 BV= NPLAYERS 0 BV= INITFB 0 BV= COCKTAIL 0 BV= CRASHCTR
-;	0 V= COMBO2 3 BA= CRBASES 0 V= COMBO1
-;
 ;##########################################################################################
 ;	{ BLOCK 0032 }
 ;	( EQUATES for COINS, DOORS, PORTS, BITS ) DECIMAL
