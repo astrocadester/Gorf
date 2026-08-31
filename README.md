@@ -1,95 +1,80 @@
-# Gorf — Z80 Source Reconstruction
+# Gorf — Z80 and TERSE Source Reconstruction
 
-This repository contains the disassembly, source code reconstruction, and technical documentation for the classic arcade game **Gorf** (Midway, 1981).
+This repository reconstructs the program ROMs for Midway's *Gorf* (1981) as buildable Z80 source. The source preserves the shipped Gorf revision 2 bytes while exposing the game's native Z80 routines, direct-threaded TERSE program, Astrocade hardware control, sound, and SC-01 speech system.
 
----
+## Program architecture
 
-## 🛠️ Build & Tools
+Gorf is neither a conventional all-Z80 program nor a bytecode interpreter wrapped around a small native shell. Its resident runtime executes a direct-threaded TERSE program:
 
-* **Assembler:** zmac v1.3 (Z80 Macro Cross Assembler)
-  * [Windows Binary (`zmac.exe`)](https://ballyalley.com/ml/ml_tools/Zmac13_win32.zip)
-  * [Linux Source and Binary (`zmac`)](https://ballyalley.com/ml/ml_tools/zmac-linux.zip)
-* **Primary Source:** `src/Gorf_Disassembly.asm`
+- BC is the threaded instruction pointer.
+- SP is the 16-bit parameter stack and remains available to balanced native `CALL`/`RET` sequences.
+- IX is a separate downward-growing control stack used for colon-word returns and loop state.
+- IY holds the address of `DSPATCH`, the inner interpreter.
+- Each threaded execution token is a little-endian native address.
+- Native primitives finish with `JP (IY)`; colon definitions begin with the compiled opcode `RST $08`.
 
----
+The same address space contains native primitives, threaded colon definitions, mission logic, graphics data, music scores, and speech primitives. [TERSE_ARCHITECTURE.md](docs/TERSE_ARCHITECTURE.md) documents the runtime contract and shows decoded examples from this source.
 
-### Building the ROMs ---> Windows 10 / 11
+## ROM layout
 
-The Windows build script searches for `zmac` in the following order:
+The reconstructed image is split into eight 4 KiB program ROMs:
 
-1. The executable named by the `ZMAC` environment variable.
-2. `tools\zmac.exe` in the repository.
-3. `zmac.exe` in `PATH`.
+| ROM | CPU range | SHA-1 |
+|---|---:|---|
+| `gorf-a.bin` | `$0000-$0FFF` | `76e2e3ad1a66755f1a369167fdb157690fd44a52` |
+| `gorf-b.bin` | `$1000-$1FFF` | `2601faf12d0ab4972c5535ffd722b03ecd8c097c` |
+| `gorf-c.bin` | `$2000-$2FFF` | `0b363a71d7585a4828e08668ebb2999c55e02721` |
+| `gorf-d.bin` | `$3000-$3FFF` | `392214cc6ed4155bfe022d36f0f86c2594a5ab57` |
+| `gorf-e.bin` | `$8000-$8FFF` | `720fb8b48e20c1fc281d8804259016c3c5364a07` |
+| `gorf-f.bin` | `$9000-$9FFF` | `9c9d6d3bfee6556dc7a01de81d6148dd02f04fc9` |
+| `gorf-g.bin` | `$A000-$AFFF` | `9edccceea5af015275582553ed238c40c73d8f4f` |
+| `gorf-h.bin` | `$B000-$BFFF` | `5aa8d824814ee1c30eaf0044da78d3aa8220dcaa` |
 
-To assemble the source code into MAME-ready ROMs, run the build script from the root directory:
+The `$4000-$7FFF` interval is not a program ROM. The contiguous assembler image retains that address-space gap so labels and absolute references match the CPU map; the build scripts extract only the eight populated ROM ranges.
 
-```cmd
-build.bat
-```
+## Source organization
 
-The script will automatically compile the assembly and deposit the final, ready-to-play binaries (`gorf-a.bin` through `gorf-h.bin`) along with the packaged `gorf.zip` into a new `roms/` folder in your project root.
+| Path | Contents |
+|---|---|
+| `src/Gorf_Disassembly.asm` | Revision 2 native Z80, TERSE runtime and threaded game program |
+| `src/KLINGON_X11.asm` | Optional Klingon-language X11 speech ROM reconstruction |
+| `src/GERMAN_X11.asm` | Optional German-language X11 speech ROM reconstruction |
+| `src/FRENCH_X11.asm` | Optional French-language X11 speech ROM reconstruction |
+| `docs/TERSE_ARCHITECTURE.md` | Gorf-specific threaded-runtime reference |
+| `TERSE_Naming_Guidelines.md` | Symbol policy for reconstructed TERSE source |
+| `TERSE_81_verbs_index.md` | Categorized 1981 standard glossary index |
+| `SOUND_MAP.md` | Music processor events and score roots |
+| `SPEECH_MAP.md` | Resident and external speech paths |
 
-To select a specific assembler executable outside the default search locations:
+Historical TERSE block transcriptions are retained beside reconstructed code where they establish provenance. Executable labels and comments describe the shipped binary; compiler-only vocabulary is not presented as resident runtime code.
 
-```cmd
-set ZMAC=C:\path\to\zmac.exe
-build.bat
-```
----
+## Build
 
-### Building the ROMs ---> Linux
+The build requires zmac v1.3. The supplied scripts resolve the assembler from the `ZMAC` environment variable, `tools/zmac` (`tools\\zmac.exe` on Windows), or `PATH`.
 
-The Linux build requires Bash, `zip`, and a Linux build of `zmac`. The build script searches for `zmac` in the following order:
-
-1. The executable named by the `ZMAC` environment variable.
-2. `tools/zmac` in the repository.
-3. `zmac` in `PATH`.
-
-From the repository root, make the script executable once and run it:
+Linux:
 
 ```bash
 chmod +x build.sh
 ./build.sh
 ```
 
-To select a specific assembler executable:
+Windows:
+
+```bat
+build.bat
+```
+
+To select another zmac v1.3 executable:
 
 ```bash
 ZMAC=/path/to/zmac ./build.sh
 ```
 
-The script will automatically compile the assembly and deposit the final, ready-to-play binaries (gorf-a.bin through gorf-h.bin) and the packaged gorf.zip into the roms/ folder in your project root.
+Successful builds place `gorf-a.bin` through `gorf-h.bin` and the MAME-ready `gorf.zip` in `roms/`; assembler listings remain under the build intermediate directory. The build verifies every reconstructed program ROM against the revision 2 checksums above.
 
---- 
+The SC-01 speech ROM is external data, not generated by the main source. If `roms/sc01.bin` is present, the build includes it in `roms/gorf.zip`.
 
-### Optional SC-01 speech ROM
-The SC-01 speech ROM is not part of the reconstructed program source. If a file named `sc01.bin` exists in `roms/`, the build script automatically includes it in `roms/gorf.zip`. If the file is absent, the build continues and packages only the eight Gorf program ROMs.
+## Source conventions
 
----
-
-## Repository Structure
-
-```text
-├── build.bat                  # Primary Windows build script
-├── build.sh                   # Primary Linux build script
-├── README.md                  # Project documentation
-├── roms/                      # Generated ROM binaries (gorf-a.bin through gorf-h.bin)
-├── src/
-│   ├── Gorf_Disassembly.asm   # Main Z80 source disassembly
-│   └── zout/                  # Intermediate build files (.cim, .lst)
-└── tools/
-    └── .gitkeep               # Directory tracking file
-```
-
----
-
-## Coding Standards & Guidelines
-
-To maintain visual and structural consistency across all arcade disassembly repositories, source code edits should follow our shared project standards.
-
-| A Note on Flexibility |
-| :--- |
-| **These formatting standards are meant for guidance, not to force you into a coding straitjacket.** While a consistent layout is highly encouraged as a best practice, you are free to make exceptions without consequence. If adhering to these specific columns compromises the readability of a complex routine or data block, or you just don't like the look of the code,  take the liberty to break the rule. **Readability and accuracy always come first.** |
-
-* **Z80 Coding Style & Layout** - Column alignments, spacing, and comment conventions.
-* **TERSE Naming Rules**        - Capitalization, label length, and internal jump conventions.
+Canonical TERSE names are used only where the historical source or runtime behavior establishes the identity. Inferred game-specific symbols use descriptive labels and are not promoted to standard TERSE vocabulary. See [TERSE_Naming_Guidelines.md](TERSE_Naming_Guidelines.md).
