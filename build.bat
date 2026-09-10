@@ -40,12 +40,12 @@ echo   source: src\Gorf_Disassembly.asm
 echo   output: roms
 echo.
 
-echo [1/4] Preparing clean build environment...
+echo [1/5] Preparing clean build environment...
 if exist "src\zout" rmdir /s /q "src\zout"
 mkdir "src\zout"
 if not exist "roms" mkdir "roms"
 
-echo [2/4] Assembling Gorf_Disassembly.asm
+echo [2/5] Assembling Gorf_Disassembly.asm
 echo       zmac: %ZMAC_BIN%
 "%ZMAC_BIN%" -h -o src\zout\Gorf_Disassembly.hex -x src\zout\Gorf_Disassembly.lst src\Gorf_Disassembly.asm
 if %ERRORLEVEL% neq 0 (
@@ -61,7 +61,7 @@ if "%BUILD_GERMAN%"=="1" (
         exit /b 1
     )
 
-    echo [2.5/4] Assembling Optional German ROM: GERMAN_X11.asm
+    echo [2.5/5] Assembling Optional German ROM: GERMAN_X11.asm
     "%ZMAC_BIN%" -h -o src\zout\GERMAN_X11.hex -x src\zout\GERMAN_X11.lst src\german\GERMAN_X11.asm
     if errorlevel 1 (
         echo ERROR: zmac failed while assembling the German ROM.
@@ -110,7 +110,7 @@ if "%BUILD_FRENCH%"=="1" (
         exit /b 1
     )
 
-    echo [2.5/4] Assembling Optional French ROM: FRENCH_X11.asm
+    echo [2.5/5] Assembling Optional French ROM: FRENCH_X11.asm
     "%ZMAC_BIN%" -h -o src\zout\FRENCH_X11.hex -x src\zout\FRENCH_X11.lst src\french\FRENCH_X11.asm
     if errorlevel 1 (
         echo ERROR: zmac failed while assembling the French ROM.
@@ -159,7 +159,7 @@ if "%BUILD_KLINGON%"=="1" (
         exit /b 1
     )
 
-    echo [2.5/4] Assembling Optional Klingon ROM: KLINGON_X11.asm
+    echo [2.5/5] Assembling Optional Klingon ROM: KLINGON_X11.asm
     "%ZMAC_BIN%" -h -o src\zout\KLINGON_X11.hex -x src\zout\KLINGON_X11.lst src\klingon\KLINGON_X11.asm
     if errorlevel 1 (
         echo ERROR: zmac failed while assembling the Klingon ROM.
@@ -201,7 +201,7 @@ if "%BUILD_KLINGON%"=="1" (
     )
 )
 
-echo [3/4] Splitting image into Gorf ROMs...
+echo [3/5] Splitting image into Gorf ROMs...
 powershell -NoProfile -ExecutionPolicy Bypass -Command ^
     "$inputFile = 'src\zout\Gorf_Disassembly.hex';" ^
     "$outputDir = 'roms';" ^
@@ -257,6 +257,39 @@ if %ERRORLEVEL% neq 0 (
     exit /b %ERRORLEVEL%
 )
 
+echo [4/5] Verifying Program-2 ROM SHA1 values...
+powershell -NoProfile -ExecutionPolicy Bypass -Command ^
+    "$expected = @(" ^
+    "    '76e2e3ad1a66755f1a369167fdb157690fd44a52'," ^
+    "    '2601faf12d0ab4972c5535ffd722b03ecd8c097c'," ^
+    "    '0b363a71d7585a4828e08668ebb2999c55e02721'," ^
+    "    '392214cc6ed4155bfe022d36f0f86c2594a5ab57'," ^
+    "    '720fb8b48e20c1fc281d8804259016c3c5364a07'," ^
+    "    '9c9d6d3bfee6556dc7a01de81d6148dd02f04fc9'," ^
+    "    '9edccceea5af015275582553ed238c40c73d8f4f'," ^
+    "    '5aa8d824814ee1c30eaf0044da78d3aa8220dcaa'" ^
+    ");" ^
+    "if ($env:BUILD_FRENCH -eq '1') {" ^
+    "    $names = @('gorf_a.x1','gorf_b.x2','gorf_c.x3','gorf_d.x4','gorf_e.x5','gorf_f.x6','gorf_g.x7','gorf_h.x8');" ^
+    "} elseif (($env:BUILD_GERMAN -eq '1') -or ($env:BUILD_KLINGON -eq '1')) {" ^
+    "    $names = @('873a.x1','873b.x2','873c.x3','873d.x4','873e.x5','873f.x6','873g.x7','873h.x8');" ^
+    "} else {" ^
+    "    $names = @('gorf-a.bin','gorf-b.bin','gorf-c.bin','gorf-d.bin','gorf-e.bin','gorf-f.bin','gorf-g.bin','gorf-h.bin');" ^
+    "};" ^
+    "for ($i = 0; $i -lt $names.Count; $i++) {" ^
+    "    $path = Join-Path 'roms' $names[$i];" ^
+    "    if (-not (Test-Path -LiteralPath $path)) { Write-Error ('Missing generated ROM: ' + $path); exit 1 };" ^
+    "    $actual = (Get-FileHash -Algorithm SHA1 -LiteralPath $path).Hash.ToLowerInvariant();" ^
+    "    if ($actual -ne $expected[$i]) { Write-Error ($names[$i] + ' SHA1 mismatch: expected ' + $expected[$i] + ', got ' + $actual); exit 1 };" ^
+    "    Write-Host ('  verified  ' + $names[$i] + '  ' + $actual);" ^
+    "}"
+
+if %ERRORLEVEL% neq 0 (
+    echo ERROR: Program-2 ROM verification failed.
+    pause
+    exit /b %ERRORLEVEL%
+)
+
 if not exist "roms\sc01.bin" (
     echo ERROR: Required speech ROM not found: roms\sc01.bin
     pause
@@ -264,7 +297,7 @@ if not exist "roms\sc01.bin" (
 )
 
 if "%BUILD_GERMAN%"=="1" (
-    echo [4/4] Packaging roms\gorfpgm1g.zip...
+    echo [5/5] Packaging roms\gorfpgm1g.zip...
     powershell -NoProfile -ExecutionPolicy Bypass -Command ^
         "$romFiles = Get-ChildItem -Path 'roms\873?.x?';" ^
         "if ($romFiles.Count -ne 8) { Write-Error 'Expected eight Program-2 CPU ROM files.'; exit 1 };" ^
@@ -272,7 +305,7 @@ if "%BUILD_GERMAN%"=="1" (
         "$romFiles += Get-Item 'roms\sc01.bin';" ^
         "Compress-Archive -Path $romFiles.FullName -DestinationPath 'roms\gorfpgm1g.zip' -Force"
 ) else if "%BUILD_FRENCH%"=="1" (
-    echo [4/4] Packaging roms\gorfpgm1f.zip...
+    echo [5/5] Packaging roms\gorfpgm1f.zip...
     powershell -NoProfile -ExecutionPolicy Bypass -Command ^
         "$romFiles = Get-ChildItem -Path 'roms\gorf_?.x?';" ^
         "if ($romFiles.Count -ne 8) { Write-Error 'Expected eight Program-2 CPU ROM files using French MAME member names.'; exit 1 };" ^
@@ -287,7 +320,7 @@ if "%BUILD_GERMAN%"=="1" (
         "}"
 
 ) else if "%BUILD_KLINGON%"=="1" (
-    echo [4/4] Packaging roms\gorfpgm1g.zip...
+    echo [5/5] Packaging roms\gorfpgm1g.zip...
     if exist "roms\gorfk.zip" del /q "roms\gorfk.zip"
     powershell -NoProfile -ExecutionPolicy Bypass -Command ^
         "$romFiles = Get-ChildItem -Path 'roms\873?.x?';" ^
@@ -302,7 +335,7 @@ if "%BUILD_GERMAN%"=="1" (
         "    Remove-Item $klingonAlias -Force -ErrorAction SilentlyContinue;" ^
         "}"
 ) else (
-    echo [4/4] Packaging roms\gorf.zip...
+    echo [5/5] Packaging roms\gorf.zip...
     powershell -NoProfile -ExecutionPolicy Bypass -Command ^
         "$romFiles = Get-ChildItem -Path 'roms\gorf-?.bin';" ^
         "$romFiles += Get-Item 'roms\sc01.bin';" ^
