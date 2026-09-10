@@ -1,0 +1,85 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="620" viewBox="0 0 900 620" role="img" aria-labelledby="title desc">
+  <title id="title">Gorf sound architecture</title>
+  <desc id="desc">A TERSE or native sound event selects a ROM score and initializes one of two 48-byte work arrays. Foreground and interrupt service write the sound registers in two Astrocade custom I/O chips.</desc>
+  <defs>
+    <linearGradient id="blue" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#237b98"/>
+      <stop offset="1" stop-color="#17495e"/>
+    </linearGradient>
+    <linearGradient id="brown" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#8d5834"/>
+      <stop offset="1" stop-color="#4b2b31"/>
+    </linearGradient>
+    <linearGradient id="green" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#267354"/>
+      <stop offset="1" stop-color="#173d33"/>
+    </linearGradient>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" class="arrow"/>
+    </marker>
+    <style>
+      :root{color-scheme:light dark}
+      .sans{font-family:Inter,"DejaVu Sans",sans-serif}
+      .mono{font-family:"IBM Plex Mono","DejaVu Sans Mono",monospace}
+      .heading{font-size:24px;font-weight:700;fill:#1f2d39;letter-spacing:.6px}
+      .subhead{font-size:13px;fill:#506779;letter-spacing:.35px}
+      .rule{stroke:#718291;stroke-width:1.2}
+      .node{stroke:#526576;stroke-width:1.2}
+      .node-title{font-size:16px;font-weight:700;fill:#f5f7fa;text-anchor:middle}
+      .node-detail{font-size:12px;fill:#cfdae4;text-anchor:middle}
+      .edge{fill:none;stroke:#167fa8;stroke-width:2.2;marker-end:url(#arrow)}
+      .arrow{fill:#167fa8}
+      .edge-label{font-size:12px;font-weight:700;fill:#8a5c00;text-anchor:middle}
+      .footer{font-size:12px;fill:#506779;text-anchor:middle}
+      @media (prefers-color-scheme:dark){
+        .heading{fill:#f5f7fa}.subhead{fill:#8da7bb}.rule{stroke:#a5b3bf}
+        .node{stroke:#d9e3e9}.edge{stroke:#59c7ef}.arrow{fill:#59c7ef}
+        .edge-label{fill:#ffcb45}.footer{fill:#a9b6c4}
+      }
+    </style>
+  </defs>
+
+  <text x="32" y="38" class="sans heading">SOUND ARCHITECTURE</text>
+  <text x="32" y="61" class="sans subhead">GORF PROGRAM 2 - DUAL ASTROCADE CUSTOM I/O AUDIO</text>
+  <line x1="32" y1="76" x2="868" y2="76" class="rule"/>
+
+  <rect x="35" y="105" width="225" height="76" rx="12" fill="url(#blue)" class="node"/>
+  <text x="147.5" y="135" class="sans node-title">Sound event</text>
+  <text x="147.5" y="159" class="sans node-detail">TERSE or native caller</text>
+
+  <rect x="338" y="105" width="225" height="76" rx="12" fill="url(#brown)" class="node"/>
+  <text x="450.5" y="135" class="sans node-title">Select ROM score</text>
+  <text x="450.5" y="159" class="sans node-detail">Initialize playback state</text>
+
+  <rect x="640" y="105" width="225" height="76" rx="12" fill="url(#green)" class="node"/>
+  <text x="752.5" y="135" class="sans node-title">Sound work array</text>
+  <text x="752.5" y="159" class="mono node-detail">48 bytes per generator</text>
+
+  <path d="M260 143 H338" class="edge"/>
+  <path d="M563 143 H640" class="edge"/>
+
+  <path d="M752 181 V225 H265 V263" class="edge"/>
+  <path d="M752 181 V225 H635 V263" class="edge"/>
+
+  <rect x="145" y="264" width="240" height="76" rx="12" fill="url(#blue)" class="node"/>
+  <text x="265" y="294" class="sans node-title">Score interpreter</text>
+  <text x="265" y="318" class="sans node-detail">Foreground bytecode service</text>
+
+  <rect x="515" y="264" width="240" height="76" rx="12" fill="url(#brown)" class="node"/>
+  <text x="635" y="294" class="sans node-title">Timed sound service</text>
+  <text x="635" y="318" class="sans node-detail">Interrupt-time synthesis updates</text>
+
+  <path d="M265 340 V386 H450 V419" class="edge"/>
+  <path d="M635 340 V386 H450 V419" class="edge"/>
+
+  <rect x="315" y="420" width="270" height="76" rx="12" fill="url(#brown)" class="node"/>
+  <text x="450" y="450" class="sans node-title">Sound-register writes</text>
+  <text x="450" y="474" class="mono node-detail">$10-$17 or $50-$57</text>
+
+  <path d="M450 496 V526" class="edge"/>
+
+  <rect x="265" y="527" width="370" height="54" rx="12" fill="url(#green)" class="node"/>
+  <text x="450" y="558" class="sans node-title">Two Astrocade custom I/O chips</text>
+
+  <text x="450" y="608" class="mono footer">RAM: $D0B1-$D0E0 primary   -   $D0E1-$D110 secondary</text>
+</svg>

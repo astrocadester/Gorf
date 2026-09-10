@@ -1,0 +1,86 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="590" viewBox="0 0 900 590" role="img" aria-labelledby="title desc">
+  <title id="title">Gorf speech architecture</title>
+  <desc id="desc">A TERSE speech key follows the cabinet language setting. English keys queue resident records directly. Foreign keys pass through the X11 module at C000 before joining the same queue and interrupt-driven SC-01 playback path.</desc>
+  <defs>
+    <linearGradient id="blue" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#237b98"/>
+      <stop offset="1" stop-color="#17495e"/>
+    </linearGradient>
+    <linearGradient id="steel" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#4c5865"/>
+      <stop offset="1" stop-color="#2d3641"/>
+    </linearGradient>
+    <linearGradient id="green" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#267354"/>
+      <stop offset="1" stop-color="#173d33"/>
+    </linearGradient>
+    <linearGradient id="purple" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#71347d"/>
+      <stop offset="1" stop-color="#3d214b"/>
+    </linearGradient>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" class="arrow"/>
+    </marker>
+    <style>
+      :root{color-scheme:light dark}
+      .sans{font-family:Inter,"DejaVu Sans",sans-serif}
+      .mono{font-family:"IBM Plex Mono","DejaVu Sans Mono",monospace}
+      .heading{font-size:24px;font-weight:700;fill:#1f2d39;letter-spacing:.6px}
+      .subhead{font-size:13px;fill:#506779;letter-spacing:.35px}
+      .rule{stroke:#718291;stroke-width:1.2}
+      .node{stroke:#526576;stroke-width:1.2}
+      .node-title{font-size:16px;font-weight:700;fill:#f5f7fa;text-anchor:middle}
+      .node-detail{font-size:12px;fill:#cfdae4;text-anchor:middle}
+      .edge{fill:none;stroke:#167fa8;stroke-width:2.2;marker-end:url(#arrow)}
+      .arrow{fill:#167fa8}
+      .edge-label{font-size:12px;font-weight:700;fill:#8a5c00;text-anchor:middle}
+      .footer{font-size:12px;fill:#506779;text-anchor:middle}
+      @media (prefers-color-scheme:dark){
+        .heading{fill:#f5f7fa}.subhead{fill:#8da7bb}.rule{stroke:#a5b3bf}
+        .node{stroke:#d9e3e9}.edge{stroke:#59c7ef}.arrow{fill:#59c7ef}
+        .edge-label{fill:#ffcb45}.footer{fill:#a9b6c4}
+      }
+    </style>
+  </defs>
+
+  <text x="32" y="38" class="sans heading">SPEECH ARCHITECTURE</text>
+  <text x="32" y="61" class="sans subhead">GORF PROGRAM 2 - ENGLISH AND X11 TRANSLATION PATHS</text>
+  <line x1="32" y1="76" x2="868" y2="76" class="rule"/>
+
+  <rect x="35" y="132" width="215" height="76" rx="12" fill="url(#blue)" class="node"/>
+  <text x="142.5" y="162" class="sans node-title">TERSE speech key</text>
+  <text x="142.5" y="186" class="sans node-detail">Resident record address</text>
+
+  <polygon points="390,112 525,170 390,228 255,170" fill="url(#purple)" class="node"/>
+  <text x="390" y="162" class="sans node-title">Language setting</text>
+  <text x="390" y="186" class="mono node-detail">port $13, bit 3</text>
+
+  <rect x="640" y="132" width="225" height="76" rx="12" fill="url(#green)" class="node"/>
+  <text x="752.5" y="162" class="sans node-title">Speech queue</text>
+  <text x="752.5" y="186" class="mono node-detail">$D112-$D121</text>
+
+  <path d="M250 170 H255" class="edge"/>
+  <path d="M525 170 H640" class="edge"/>
+  <text x="580" y="158" class="sans edge-label">English</text>
+
+  <path d="M390 228 V272" class="edge"/>
+  <text x="432" y="253" class="sans edge-label">Foreign</text>
+
+  <rect x="270" y="273" width="240" height="76" rx="12" fill="url(#steel)" class="node"/>
+  <text x="390" y="303" class="sans node-title">X11 translator</text>
+  <text x="390" y="327" class="mono node-detail">entry $C000</text>
+
+  <path d="M510 311 H585 V208 H640" class="edge"/>
+
+  <path d="M752 208 V303" class="edge"/>
+  <rect x="640" y="304" width="225" height="76" rx="12" fill="url(#blue)" class="node"/>
+  <text x="752.5" y="334" class="sans node-title">PHONE service</text>
+  <text x="752.5" y="358" class="sans node-detail">Interrupt-driven playback</text>
+
+  <path d="M752 380 V430" class="edge"/>
+  <rect x="640" y="431" width="225" height="76" rx="12" fill="url(#green)" class="node"/>
+  <text x="752.5" y="461" class="sans node-title">Votrax SC-01</text>
+  <text x="752.5" y="485" class="mono node-detail">phoneme output port $17</text>
+
+  <text x="450" y="560" class="mono footer">Queue state and active playback record continue through $D12A</text>
+</svg>

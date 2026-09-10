@@ -1,0 +1,81 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="500" viewBox="0 0 900 500" role="img" aria-labelledby="title desc">
+  <title id="title">Gorf TERSE dispatch</title>
+  <desc id="desc">The BC instruction pointer feeds DSPATCH, which invokes native or colon-defined words. Native words return through IY. Colon definitions enter a nested thread and return through the IX control stack.</desc>
+  <defs>
+    <linearGradient id="blue" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#237b98"/>
+      <stop offset="1" stop-color="#17495e"/>
+    </linearGradient>
+    <linearGradient id="purple" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#71347d"/>
+      <stop offset="1" stop-color="#3d214b"/>
+    </linearGradient>
+    <linearGradient id="green" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#267354"/>
+      <stop offset="1" stop-color="#173d33"/>
+    </linearGradient>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" class="arrow"/>
+    </marker>
+    <style>
+      :root{color-scheme:light dark}
+      .sans{font-family:Inter,"DejaVu Sans",sans-serif}
+      .mono{font-family:"IBM Plex Mono","DejaVu Sans Mono",monospace}
+      .heading{font-size:24px;font-weight:700;fill:#1f2d39;letter-spacing:.6px}
+      .subhead{font-size:13px;fill:#506779;letter-spacing:.35px}
+      .rule{stroke:#718291;stroke-width:1.2}
+      .node{stroke:#526576;stroke-width:1.2}
+      .node-title{font-size:17px;font-weight:700;fill:#f5f7fa;text-anchor:middle}
+      .node-detail{font-size:12px;fill:#cfdae4;text-anchor:middle}
+      .edge{fill:none;stroke:#167fa8;stroke-width:2.2;marker-end:url(#arrow)}
+      .arrow{fill:#167fa8}
+      .edge-label{font-size:12px;font-weight:700;fill:#8a5c00;text-anchor:middle}
+      .footer{font-size:12px;fill:#506779;text-anchor:middle}
+      @media (prefers-color-scheme:dark){
+        .heading{fill:#f5f7fa}.subhead{fill:#8da7bb}.rule{stroke:#a5b3bf}
+        .node{stroke:#d9e3e9}.edge{stroke:#59c7ef}.arrow{fill:#59c7ef}
+        .edge-label{fill:#ffcb45}.footer{fill:#a9b6c4}
+      }
+    </style>
+  </defs>
+
+  <text x="32" y="38" class="sans heading">TERSE DISPATCH</text>
+  <text x="32" y="61" class="sans subhead">GORF PROGRAM 2 - DIRECT-THREADED FOREGROUND EXECUTION</text>
+  <line x1="32" y1="76" x2="868" y2="76" class="rule"/>
+
+  <rect x="35" y="120" width="225" height="78" rx="12" fill="url(#blue)" class="node"/>
+  <text x="147.5" y="150" class="mono node-title">BC</text>
+  <text x="147.5" y="176" class="sans node-detail">Next execution cell</text>
+
+  <rect x="340" y="120" width="220" height="78" rx="12" fill="url(#green)" class="node"/>
+  <text x="450" y="150" class="mono node-title">DSPATCH</text>
+  <text x="450" y="176" class="sans node-detail">Fetch, advance BC, jump</text>
+
+  <rect x="640" y="120" width="225" height="78" rx="12" fill="url(#purple)" class="node"/>
+  <text x="752.5" y="150" class="sans node-title">TERSE word</text>
+  <text x="752.5" y="176" class="sans node-detail">Kernel, native, or colon entry</text>
+
+  <path d="M260 159 H340" class="edge"/>
+  <path d="M560 159 H640" class="edge"/>
+
+  <path d="M752 120 V96 H450 V120" class="edge"/>
+  <text x="600" y="92" class="mono edge-label">JP (IY)</text>
+
+  <path d="M752 198 V267" class="edge"/>
+  <text x="794" y="237" class="mono edge-label">RST 08h</text>
+
+  <rect x="620" y="268" width="265" height="72" rx="12" fill="url(#green)" class="node"/>
+  <text x="752.5" y="297" class="mono node-title">TERSE_COLON_ENTRY</text>
+  <text x="752.5" y="321" class="sans node-detail">Save caller BC on IX</text>
+
+  <path d="M752 340 V374" class="edge"/>
+
+  <rect x="620" y="375" width="265" height="72" rx="12" fill="url(#blue)" class="node"/>
+  <text x="752.5" y="404" class="sans node-title">Nested inline thread</text>
+  <text x="752.5" y="428" class="sans node-detail">BC now reads nested cells</text>
+
+  <path d="M620 411 H450 V198" class="edge"/>
+  <text x="535" y="401" class="mono edge-label">_RETURN</text>
+
+  <text x="450" y="478" class="mono footer">SP: parameter/native-call stack   -   IX: colon-return and loop-control stack</text>
+</svg>
