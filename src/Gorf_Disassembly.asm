@@ -4,10 +4,10 @@
 ; daveturner0x2a@gmail.com
 ;******************************************************************************************
 ;
-;   CODING CONVENTIONS: (PRELIMINARY - 07/08/2026)
+;   SOURCE CONVENTIONS
 ;
 ;       ;********************************
-;       ; My Comments or explanations
+;       ; Reconstruction comments and explanations
 ;       ;********************************
 ;
 ;       ;#########################################################################
@@ -31,13 +31,14 @@
 ;
 ;       ZMAC (this assembler) does not distinguish between upper/lower case labels.
 ;
-;       High-Level TERSE Colon Definitions (:) and standard TERSE CODE WORDS:
-;               Start with an underscore and are UPPERCASE. Unusable symbols become
-;               lowercase. [i.e.] _DROP is fine but B@ becomes _Bat. B+ is _Bplus.
+;       Compiled TERSE words and native TERSE primitives:
+;               Use an underscore and the canonical uppercase TERSE spelling where known.
+;               Characters unavailable in assembler identifiers use a readable suffix:
+;               _DROP, _Bat (B@), _Bplus (B+).
 ;
-;       Low-Level TERSE CODE WORDS:
-;               If lowercase (like 'snap') and shares a name with an UPPERCASE word,
-;               append '_code'. [i.e.] snap_code.
+;       Native support routines:
+;               Use lowercase. If a support routine collides with a TERSE word, append
+;               _code, as in snap_code.
 ;
 ;       TERSE SUBR (subroutines):
 ;               All lowercase by convention.
@@ -143,8 +144,11 @@ BLACK_HOLE_SOUND          EQU     $AB80   ; FLAG SHIP 0114: BH composite event
 
 ;
 ;******************************************************************************************
-;   COLD START of the game. This section just jumps over the RST $08
-;   which hold _ENTER for the Terse engine.
+;   RESET AND TERSE COLON-ENTRY VECTOR
+;
+;   Reset begins at $0000 and jumps over the RST $08 vector at $0008. A compiled colon
+;   definition begins with opcode $CF (RST $08); the Z80 has already pushed the nested
+;   thread address when execution arrives at TERSE_COLON_ENTRY.
 ;******************************************************************************************
 
             ORG     $0000               ; Genesis 1:1-5
@@ -157,34 +161,33 @@ COLDSTRT:   nop
             nop
 
 ;******************************************************************************************
-; ----> ENTER   Enters Terse mode via RST $08 ($CF).
-;               Pushes the current processor state onto the IX (return/loop) stack,
-;               saves the return address, and sets up execution.
+; ----> TERSE_COLON_ENTRY
+;       Saves the caller's threaded instruction pointer (BC) on the downward-growing IX
+;       control stack. POP BC takes the nested thread address pushed by RST $08. The final
+;       JP (IY) fetches the first execution token in that thread.
 ;******************************************************************************************
 
-_ENTER      EQU     $CF                 ; $CF is hex for RST $08.
-                                        ; _ENTER makes code look better
+TERSE_COLON_OPCODE EQU  $CF                 ; Compiled RST $08 opcode at a colon-word entry
 
+TERSE_COLON_ENTRY:
             dec     ix
             ld      (ix+$00),b
             dec     ix
             ld      (ix+$00),c
             pop     bc
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 
 ;******************************************************************************************
 ;   Hardware Reset code
 ;
-;       Everything seems to get set to zero which in some case does not make sense
-;       but I suppose that every port has to have something written to it or it is
-;       in an unstable state. It would be much like setting variables to zero in code.
+;       Establishes a known Astrocade custom-chip state, initializes the TERSE registers,
+;       and transfers control to the initial threaded program.
 ;
 ;******************************************************************************************
 
 WARMSTRT:   di                          ; Warmstart the machine.
                                         ; Actual initialization begins here. COLDSTRT ($0000)
-                                        ; jumps to this label to safely bypass the TERSE
-                                        ; _ENTER vector located at $0008.
+                                        ; jumps here over TERSE_COLON_ENTRY at $0008.
 
             im      0
 
@@ -210,8 +213,7 @@ WARMSTRT:   di                          ; Warmstart the machine.
             inc     a                   ; a=1
             out     ($08),a             ; Set High resolution
 
-            ; The following ports doesn't
-            ; exist in Gorf hardware.
+            ; Initialize the auxiliary output latch range used by the board interface.
 
             ld      a,$F0
             out     ($F8),a
@@ -226,13 +228,13 @@ WARMSTRT:   di                          ; Warmstart the machine.
 ;******************************************************************************************
 ;   TERSE REGISTER USE:
 ;
-;       BC = Instruction Pointer    (IP)
-;       SP = Parmeter Stack Pointer (PSP)
-;       IX = Return Stack Pointer   (RSP)
-;       IY = Dispatcher             (DSPATCH)
+;       BC = threaded instruction pointer (IP)
+;       SP = parameter stack and balanced native CALL stack (PSP)
+;       IX = colon-return and loop-control stack (RSP)
+;       IY = address of DSPATCH
 ;
 ;******************************************************************************************
-;   Initalize the TERSE stack pointers
+;   Initialize the TERSE execution registers
 ;******************************************************************************************
 
             ld      ix,RSP              ; Terse Return Stack Pointer
@@ -241,22 +243,20 @@ WARMSTRT:   di                          ; Warmstart the machine.
             ld      iy,DSPATCH          ; Dispatcher
 
 ;******************************************************************************************
-; ---->  DSPATCH    Fetches, decodes, and executes the
-;                   next Terse instruction. Updates (BC) to
-;                   point to the subsequent instruction.
-;                   (Note: This is the engine's internal equivalent of the standard
-;                   TERSE verb 'NEXT').
+; ----> DSPATCH
+;       Direct-threaded inner interpreter. BC addresses a stream of 16-bit execution
+;       tokens. DSPATCH fetches the next token, advances BC by two, and jumps directly to
+;       that word's native entry point.
 ;
-;   The _DSPATCH label is a special case. Unlike most Terse words, it directly holds the Z80
-;   instruction JP (IY).  This disguise ensures that Terse instructions visually ends with a
-;   Terse-like word, maintaining the language's aesthetic.
+;       TERSE_NEXT_OPCODE is the little-endian encoding of JP (IY), FD E9. It lets native
+;       primitives emit their compiled NEXT continuation without depending on assembler
+;       support for the indexed-indirect spelling.
 ;
 ;******************************************************************************************
 
-_DSPATCH    EQU     $E9FD               ; Replacement for JP (IY) to make
-                                        ; TERSE instructions look better
+TERSE_NEXT_OPCODE EQU $E9FD               ; Emits FD E9: JP (IY)
 
-DSPATCH:    ld      a,(bc)              ; Actual DSPATCH keyword code
+DSPATCH:    ld      a,(bc)              ; Fetch little-endian execution token
             inc     bc
             ld      l,a
             ld      a,(bc)
@@ -265,15 +265,15 @@ DSPATCH:    ld      a,(bc)              ; Actual DSPATCH keyword code
             jp      (hl)
 
 ;******************************************************************************************
-; ----> RETURN      Exits the current Terse word, returns to dispatcher.
-;                   (Note: This is the internal runtime execution routine for the ';' verb).
+; ----> RETURN      Restores the caller's threaded IP from the IX control stack and
+;                   resumes dispatch. This is the runtime compiled by TERSE `;`.
 ;******************************************************************************************
 
 _RETURN:    ld      c,(ix+$00)
             inc     ix
             ld      b,(ix+$00)
             inc     ix
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 
 ;******************************************************************************************
 ; ----> LIT         Compiled primitive to push next 16-bit word literal onto stack.
@@ -286,11 +286,12 @@ _LIT:       ld      a,(bc)
             inc     bc
             ld      h,a
             push    hl
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 
 ;******************************************************************************************
-; ----> LITbyte     Gets the byte at the next address (literal value) and pushes it
-;                   to the parameter stack. (Custom engine optimization - Not in TERSE Vocabulary).
+; ----> LITbyte     Consumes one unsigned byte from the threaded stream, zero-extends it,
+;                   and pushes it on the parameter stack. This compact compiled primitive
+;                   is present in Gorf although it is absent from the standard glossary.
 ;******************************************************************************************
 
 _LITbyte:   ld      a,(bc)
@@ -298,7 +299,7 @@ _LITbyte:   ld      a,(bc)
             ld      l,a
             ld      h,$00
             push    hl
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 
 ;******************************************************************************************
 ; ----> DLIT        Primitive compiled before 32-bit double literals. (Gets contents of
@@ -314,9 +315,9 @@ _DLIT:      ld      a,(bc)
             jp      _LIT
 
 ;******************************************************************************************
-; ----> _BARRAY     Runtime execution behavior for BARRAY: Takes an index 'i' from the stack,
-;                   retrieves the base address of the byte array from the instruction stream,
-;                   and pushes the memory address of the i-th byte (base_address + i) to the stack.
+; ----> BARRAY      Compiled byte-array address primitive. Consumes an index from the
+;                   parameter stack and an inline base address from the thread, then pushes
+;                   base+index.
 ;******************************************************************************************
 
 _BARRAY:    pop     hl
@@ -328,12 +329,11 @@ calc_prep1: ld      a,(bc)
             ld      d,a
             add     hl,de
             push    hl
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 
 ;******************************************************************************************
-; ----> _ARRAY      Takes an index 'i' from the stack, doubles it (since words are 2 bytes),
-;                   and redirects execution to _BARRAY to calculate and push the memory
-;                   address of the i-th word (base_address + (i * 2)) to the stack.
+; ----> ARRAY       Compiled word-array address primitive. Scales the index by two and
+;                   shares BARRAY's inline-base calculation.
 ;******************************************************************************************
 
 _ARRAY:     pop     hl
@@ -346,7 +346,7 @@ _ARRAY:     pop     hl
 
 _0:         ld      hl,$0000
             push    hl
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 
 ;******************************************************************************************
 ; ----> 1       Puts a 1 on the stack. (1 is a constant)
@@ -354,7 +354,7 @@ _0:         ld      hl,$0000
 
 _1:         ld      hl,$0001
             push    hl
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 
 ;******************************************************************************************
 ; ----> DUP     Duplicates the top value on the stack.
@@ -363,7 +363,7 @@ _1:         ld      hl,$0001
 _DUP:       pop     hl
             push    hl
             push    hl
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 
 ;******************************************************************************************
 ; ----> 2DUP    Duplicates the top two values on the stack.
@@ -375,14 +375,14 @@ _2DUP:      pop     hl
             push    hl
             push    de
             push    hl
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 
 ;******************************************************************************************
 ; ----> DROP    Removes the top value from the stack.
 ;******************************************************************************************
 
 _DROP:      pop     hl
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 
 ;******************************************************************************************
 ; ----> R>      Pops a 16-bit value from the return stack (pointed to by the ix register)
@@ -394,7 +394,7 @@ _Rgt:       ld      l,(ix+$00)
             ld      h,(ix+$00)
             inc     ix
             push    hl
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 
 ;******************************************************************************************
 ; ----> >R      Push the value from the user stack and push it onto
@@ -406,7 +406,7 @@ _gtR:       pop     hl
             ld      (ix+$00),h
             dec     ix
             ld      (ix+$00),l
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 
 ;******************************************************************************************
 ; ----> SWAP    Exchanges the top two values on the stack.
@@ -416,7 +416,7 @@ _SWAP:      pop     hl
             pop     de
             push    hl
             push    de
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 
 ;******************************************************************************************
 ; ----> 2SWAP   Swaps two pairs of values on the stack (e.g., double-precision numbers).
@@ -434,7 +434,7 @@ _2SWAP:     pop     hl
             push    de
             push    hl
             exx
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 
 ;******************************************************************************************
 ; ----> SP@     Returns the memory address of the top of the user data stack.
@@ -443,7 +443,7 @@ _2SWAP:     pop     hl
 _SPat:      ld      hl,$0000
             add     hl,sp
             push    hl
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 
 ;******************************************************************************************
 ; ----> @       Returns the 16-bit word found at the specified memory address.
@@ -454,7 +454,7 @@ _at:        pop     hl
             inc     hl
             ld      d,(hl)
             push    de
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 
 ;******************************************************************************************
 ; ----> B@      Returns the 8-bit byte found at the specified memory address.
@@ -465,7 +465,7 @@ _Bat:       pop     hl
             ld      e,(hl)
             ld      d,$00
             push    de
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 
 ;******************************************************************************************
 ; ----> !       Stores a 16-bit integer at the specified memory address.
@@ -475,7 +475,7 @@ _bang:      pop     hl
             ld      (hl),e
             inc     hl
             ld      (hl),d
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 
 ;******************************************************************************************
 ; ----> B!      Store the least significant 8 bits of m at byte-address p. m p ---
@@ -483,7 +483,7 @@ _bang:      pop     hl
 _Bbang:     pop     hl
             pop     de
             ld      (hl),e
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 
 ;******************************************************************************************
 ; ----> ZERO     Sets the 16-bit word at the specified memory location to 0.
@@ -492,7 +492,7 @@ _ZERO:      pop     hl
             ld      (hl),$00
             inc     hl
             ld      (hl),$00
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 
 ;******************************************************************************************
 ; ----> +       Performs 16-bit integer addition of the top two stack values.
@@ -501,7 +501,7 @@ _plus:      pop     de
             pop     hl
             add     hl,de
             push    hl
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 
 ;******************************************************************************************
 ; ----> -       Performs 16-bit integer subtraction (subtracts the top stack
@@ -512,7 +512,7 @@ _minussign: pop     de
 minussign1: xor     a
             sbc     hl,de
             push    hl
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 
 ;******************************************************************************************
 ; ----> MINUS   Negate a 16-bit number by taking its two's complement (0 - m).
@@ -534,7 +534,7 @@ _COM:       pop     de
 _1minus:    pop     hl
             dec     hl
             push    hl
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 
 ;******************************************************************************************
 ; ----> 1+    Increment value on stack. q=m+1   q=m+1
@@ -542,7 +542,7 @@ _1minus:    pop     hl
 _1plus:     pop     hl
             inc     hl
             push    hl
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 
 ;******************************************************************************************
 ; ----> 2+    Value on stack +2. q=m+2   m --- q
@@ -551,7 +551,7 @@ _2plus:     pop     hl
             inc     hl
             inc     hl
             push    hl
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 
 ;******************************************************************************************
 ; ----> 2-    Value on stack -2. q=m-2   m --- q
@@ -560,7 +560,7 @@ _2minus:    pop     hl
             dec     hl
             dec     hl
             push    hl
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 
 ;******************************************************************************************
 ; ----> 2*    Value on stack x 2. q=m*2 (Shift left)   m --- q
@@ -568,7 +568,7 @@ _2minus:    pop     hl
 _2splat:    pop     hl
             add     hl,hl
             push    hl
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 
 ;******************************************************************************************
 ; ----> 2/    Value on stack /2  q=m/2 (Shift Right)   m --- q
@@ -577,7 +577,7 @@ _2slash:    pop     hl
             sra     h
             rr      l
             push    hl
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 
 ;******************************************************************************************
 ; ----> ABS     Leave the absolute value of a number.
@@ -590,7 +590,7 @@ _ABS:       pop     hl
             xor     a
             sbc     hl,de
 abs1:       push    hl
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 
 ;******************************************************************************************
 ; ----> B@+7    (Not a standard TERSE word in the glossary)
@@ -611,21 +611,21 @@ _Bat_inc7:  pop     hl
             res     7,l
             ld      h,$00
             push    hl
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 
 ;******************************************************************************************
 ; ----> 1-B!    Subtract 1 from the contents of the byte at location p.   p ---
 ;******************************************************************************************
 _1minusBbang: pop   hl
             dec     (hl)
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 
 ;******************************************************************************************
 ; ----> 1+B!    Add 1 to the contents of the byte at location p.   p ---
 ;******************************************************************************************
 _1plusBbang: pop    hl
             inc     (hl)
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 
 ;******************************************************************************************
 ; ----> =        If m = n then push a 1 otherwise push a 0. (m n --- f True if m=n)
@@ -638,11 +638,10 @@ equal2:     pop     hl
             jp      nz,equal1
             inc     hl
 equal1:     push    hl
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 
 ;******************************************************************************************
 ; ----> <>      If m <> n then push a 1, otherwise push a 0. (m n --- f True if m <> n)
-;               (THIS IS NOT IN THE TERSE GLOSSARY)
 ;******************************************************************************************
 _not_equal: pop     de
 not_equal2: pop     hl
@@ -652,7 +651,7 @@ not_equal2: pop     hl
             jp      z,not_equal1
             inc     hl
 not_equal1: push    hl
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 
 ;******************************************************************************************
 ; ----> U<          True if unsigned m < n. (Evaluated mathematically by subtracting
@@ -667,7 +666,7 @@ gt2:        xor     a
             jp      nc,gt1
             inc     hl
 gt1:        push    hl
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 
 ;******************************************************************************************
 ; ----> U>=         True if unsigned m >= n. (Evaluated mathematically by subtracting
@@ -682,7 +681,7 @@ lt2:        xor     a
             jp      c,lt1
             inc     hl
 lt1:        push    hl
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 
 ;******************************************************************************************
 ; ----> <           True if signed m < n. (Evaluated mathematically by subtracting
@@ -701,7 +700,7 @@ gt_equal2:  xor     a
             jp      pe,gt_equal1
             inc     de
 gt_equal1:  push    de
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 
 ;******************************************************************************************
 ; ----> >=          True if signed m >= n. (Evaluated mathematically by subtracting
@@ -720,7 +719,7 @@ lt_equal2:  xor     a
             jp      po,lt_equal1
             inc     de
 lt_equal1:  push    de
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 
 ;******************************************************************************************
 ; ----> U>          True if unsigned m > n. (Evaluated by popping the values in
@@ -806,7 +805,7 @@ _minusDUP:  pop     hl
             jp      z,minusDUP1         ; Replaced $0212
             push    hl
 minusDUP1:  push    hl
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 
 ;******************************************************************************************
 ; ----> AND     Bitwise logical AND.   m n --- q
@@ -820,7 +819,7 @@ _AND:       pop     de
             and     d
             ld      h,a
             push    hl
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 
 ;******************************************************************************************
 ; ----> OR
@@ -835,7 +834,7 @@ _OR         EQU     $
             or      d
             ld      h,a
             push    hl
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 
 ;******************************************************************************************
 ; ----> XOR
@@ -851,7 +850,7 @@ _XOR        EQU     $
             xor     d
             ld      h,a
             push    hl
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 
 ;******************************************************************************************
 ; ----> BMOVE       Move the n bytes starting at byte-address p into the n
@@ -867,7 +866,7 @@ _BMOVE:     exx
             jp      z,bmove1
             ldir
 bmove1:     exx
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 
 ;******************************************************************************************
 ; ----> DO
@@ -883,7 +882,7 @@ _DO         EQU     $
             ld      (ix+$03),d
             ld      (ix+$04),c
             ld      (ix+$05),b
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 
 ;******************************************************************************************
 ; ----> LOOP    Increment the DO-loop index by one, terminating the loop if
@@ -911,7 +910,7 @@ loop_continue:
             ld        c,(ix+$04)
             ld        b,(ix+$05)
 
-loop_end:   DW        _DSPATCH
+loop_end:   DW        TERSE_NEXT_OPCODE
 
 ;******************************************************************************************
 ; ----> I       Returns the index of the innermost DO-loop.   --- m
@@ -919,7 +918,7 @@ loop_end:   DW        _DSPATCH
 _I:         ld      l,(ix+$00)
             ld      h,(ix+$01)
             push    hl
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 
 ;******************************************************************************************
 ; ----> J       Returns the index of the next outer DO-loop.   --- m
@@ -927,14 +926,14 @@ _I:         ld      l,(ix+$00)
 _J:         ld      l,(ix+$06)
             ld      h,(ix+$07)
             push    hl
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 ;******************************************************************************************
 ; ----> K       Returns the index of the second outer DO-loop.   --- m
 ;******************************************************************************************
 _K:         ld      l,(ix+$0c)
             ld      h,(ix+$0d)
             push    hl
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 
 ;******************************************************************************************
 ; ----> I+      Adds m to the index of the innermost DO-loop.   m --- q
@@ -944,7 +943,7 @@ _Iplus:     ld      l,(ix+$00)
             pop     de
             add     hl,de
             push    hl
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 ;******************************************************************************************
 ; ----> J+      Adds m to the index of the next outer DO-loop.
 ;******************************************************************************************
@@ -953,7 +952,7 @@ _Jplus:     ld      l,(ix+$06)
             pop     de
             add     hl,de
             push    hl
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 
 ;******************************************************************************************
 ; ----> K+      Adds m to the index of the second outer DO-loop.
@@ -963,7 +962,7 @@ _Kplus:     ld      l,(ix+$0c)
             pop     de
             add     hl,de
             push    hl
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 
 ;******************************************************************************************
 ; ----> OVER    Push the second stack value to the top.   m n --- m n m
@@ -973,7 +972,7 @@ _OVER:      pop     hl
             push    de
             push    hl
             push    de
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 
 ;******************************************************************************************
 ; ----> +!      Add integer m to value at address p.   m p ---
@@ -987,7 +986,7 @@ plus_bang1: ld      a,(hl)
             ld      a,(hl)
             adc     a,d
             ld      (hl),a
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 
 ;******************************************************************************************
 ; ----> 1+!     Add 1 to the contents of location p.   p ---
@@ -1011,7 +1010,7 @@ _SWAB:      pop     hl
             ld      l,h
             ld      h,e
             push    hl
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 
 ;******************************************************************************************
 ; ----> OUTP    Outputs byte-value m to output port n.
@@ -1026,7 +1025,7 @@ _OUTP:      exx
             pop     hl
             out     (c),l
             exx
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 
 ;******************************************************************************************
 ; ----> INP     Inputs from port m returning value n.
@@ -1042,7 +1041,7 @@ _INP        EQU     $
             ld      h,$00
             push    hl
             exx
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 
 ;******************************************************************************************
 ; ----> ROT
@@ -1053,7 +1052,7 @@ _ROT        EQU     $
             ex      (sp),hl
             push    de
             push    hl
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 
 ;******************************************************************************************
 ; ----> PICK    Return the nth value on the stack.   n --- q
@@ -1066,14 +1065,14 @@ _PICK:      pop     hl
             inc     hl
             ld      d,(hl)
             push    de
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 
 ;******************************************************************************************
 ; ----> 2DROP   Drop the top two values from the stack.
 ;******************************************************************************************
 _2DROP:     pop     hl
             pop     hl
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 
 ;******************************************************************************************
 ; ----> *       16-bit signed multiply.
@@ -1094,7 +1093,7 @@ star2:      ld      a,b             ; Was $0325
             jp      star1           ; Was $031D
 star_end:   push    hl              ; Was $0331
             exx
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 
 ;******************************************************************************************
 ; ----> /MOD    16-bit integer divide, m/n. The quotient is left on top of
@@ -1169,7 +1168,7 @@ div_end:    pop     af              ; Was $037E
 div_exit:   push    hl              ; Was $0392
             push    de
             exx
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 
 ;******************************************************************************************
 ; ----> +LOOP   Add m to the loop index. Exit from the loop is made when the
@@ -1209,7 +1208,7 @@ ploop_check: and    $84             ; Was $03CD
 
 ploop_cont2: ld     c,(ix+$04)      ; Was $03DA
             ld      b,(ix+$05)
-ploop_end:  DW      _DSPATCH        ; Was $03E0
+ploop_end:  DW      TERSE_NEXT_OPCODE        ; Was $03E0
 
 ;******************************************************************************************
 ; ----> BRANCH      Unconditional branch.
@@ -1220,7 +1219,7 @@ _BRANCH:    ld      a,(bc)
             ld      a,(bc)
             ld      b,a
             ld      c,e
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 
 ;******************************************************************************************
 ; ----> 0BRANCH Conditional branch-if-false
@@ -1231,7 +1230,7 @@ _0BRANCH:   pop     hl
             jp      z,branch_true
             inc     bc
             inc     bc
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 
 ;******************************************************************************************
 ; Target for Conditional Branch-If-False (_0BRANCH)
@@ -1245,7 +1244,7 @@ _LEAVE:     ld      a,(ix+$00)
             ld      (ix+$02),a
             ld      a,(ix+$01)
             ld      (ix+$03),a
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 
 ;******************************************************************************************
 ; ----> A"      Makes a string similarly to ." but does not type it. Instead
@@ -1259,7 +1258,7 @@ _Aquote:    push    bc
             add     hl,bc
             ld      b,h
             ld      c,l
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 
 ;=========================================================================================
 ;====> End of the Core Foundational dictionary (i.e., Shifts from raw Z80 to TERSE words)
@@ -1270,7 +1269,7 @@ _Aquote:    push    bc
 ; ----> MAX     Leave the greater of the two numbers.
 ;******************************************************************************************
 
-_MAX:       DB      _ENTER
+_MAX:       DB      TERSE_COLON_OPCODE
             DW      _2DUP
             DW      _less               ; Replaced $01A8
             DW      _0BRANCH            ; Conditional branch-if-false
@@ -1282,7 +1281,7 @@ max1:       DW      _DROP               ; Was $041B
 ;******************************************************************************************
 ; ----> MOVE    Move n 16-bit words from p to q.   p q n ---
 ;******************************************************************************************
-_MOVE:      DB      _ENTER
+_MOVE:      DB      TERSE_COLON_OPCODE
             DW      _2splat
             DW      _BMOVE
             DW      _RETURN
@@ -1290,7 +1289,7 @@ _MOVE:      DB      _ENTER
 ;******************************************************************************************
 ; ----> MIN     Leave the lesser of the two numbers.   m n --- p
 ;******************************************************************************************
-_MIN:       DB      _ENTER
+_MIN:       DB      TERSE_COLON_OPCODE
             DW      _2DUP
             DW      _gt                 ; Replaced $01DA
             DW      _0BRANCH            ; Conditional branch-if-false
@@ -1302,7 +1301,7 @@ min1:       DW      _DROP               ; Was $0431
 ;******************************************************************************************
 ; ----> NAND    Logical AND followed by COMPLEMENT.   m n --- q
 ;******************************************************************************************
-_NAND:      DB      _ENTER
+_NAND:      DB      TERSE_COLON_OPCODE
             DW      _AND                ; Replaced $0215
             DW      _COM
             DW      _RETURN
@@ -1310,7 +1309,7 @@ _NAND:      DB      _ENTER
 ;******************************************************************************************
 ; ----> NOR     Logical OR followed by COMPLEMENT.   m n --- q
 ;******************************************************************************************
-_NOR:       DB      _ENTER
+_NOR:       DB      TERSE_COLON_OPCODE
             DW      _OR
             DW      _COM
             DW      _RETURN
@@ -1318,7 +1317,7 @@ _NOR:       DB      _ENTER
 ;******************************************************************************************
 ; ----> MOD     Leave the remainder of m/n.   m n --- r
 ;******************************************************************************************
-_MOD:       DB      _ENTER
+_MOD:       DB      TERSE_COLON_OPCODE
             DW      _slashMOD           ; Replaced $0335
             DW      _DROP
             DW      _RETURN
@@ -1326,7 +1325,7 @@ _MOD:       DB      _ENTER
 ;******************************************************************************************
 ; ----> /       Divide m by n, leaving quotient q.   m n --- q
 ;******************************************************************************************
-_slash:     DB      _ENTER
+_slash:     DB      TERSE_COLON_OPCODE
             DW      _slashMOD           ; Replaced $0335
             DW      _SWAP
             DW      _DROP
@@ -1345,7 +1344,7 @@ _OF:        pop     hl
             jp      nz,of_false
             inc     bc
             inc     bc
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 
 of_false:   ld      a,(bc)
             ld      l,a
@@ -1354,7 +1353,7 @@ of_false:   ld      a,(bc)
             ld      b,a
             ld      c,l
             push    de
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 
 ;******************************************************************************************
 ; ----> CASES   Positional execution jump table. Takes an index from the stack.
@@ -1386,7 +1385,7 @@ _CASES:     ld      a,(bc)
             ld      a,(de)
             ld      h,a
             jp      (hl)
-case_end:   DW      _DSPATCH
+case_end:   DW      TERSE_NEXT_OPCODE
 
 ;******************************************************************************************
 ; ----> SCAN    Searches a memory block for a specific byte.
@@ -1410,7 +1409,7 @@ scan_false: ld      hl,$0000
 scan_end:   push    hl
             ld      b,d
             ld      c,e
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 
 ;##########################################################################################
 ;    { BLOCK 0030 }
@@ -1419,7 +1418,7 @@ scan_end:   push    hl
 ;******************************************************************************************
 ; ----> HS2     Leaves the address of the 0th byte of the HISCR2 array on the stack.
 ;******************************************************************************************
-_HS2:       DB      _ENTER
+_HS2:       DB      TERSE_COLON_OPCODE
             DW      _0
             DW      _BARRAY             ; Was $0088
             DW      HISCR2              ; HISCR2 RAM vector ($D010)
@@ -1433,7 +1432,7 @@ _HS2:       DB      _ENTER
 ;******************************************************************************************
 ; ----> HS4     Leaves the address of the 0th byte of the HISCR4 array on the stack.
 ;******************************************************************************************
-_HS4:       DB      _ENTER
+_HS4:       DB      TERSE_COLON_OPCODE
             DW      _0
             DW      _BARRAY             ; Was $0088
             DW      HISCR4              ; HISCR4 RAM vector ($D023)
@@ -1447,7 +1446,7 @@ _HS4:       DB      _ENTER
 ; ----> NILVQ   Clears the four bytes of the vqhead array ($D08C to $D08F) by storing
 ;               a 16-bit 0 at base + 0 and another 16-bit 0 at base + 2.
 ;******************************************************************************************
-_NILVQ:     DB      _ENTER
+_NILVQ:     DB      TERSE_COLON_OPCODE
             DW      _0
             DW      _0
             DW      _BARRAY             ; Was $0088
@@ -1471,7 +1470,7 @@ _NILVQ:     DB      _ENTER
 ;******************************************************************************************
 _DI         EQU     $
             di
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 
 ;##########################################################################################
 ;    { BLOCK 0031 }
@@ -1481,7 +1480,7 @@ _DI         EQU     $
 ; ----> EI      Enable interrupts.
 ;******************************************************************************************
 _EI:        ei
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 
 ;##########################################################################################
 ;    { BLOCK 0031 }
@@ -1493,7 +1492,7 @@ _EI:        ei
 _XDI:       di
             xor     a
             out     ($0E),a             ;INMOD
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 
 ;##########################################################################################
 ;    { BLOCK 0031 }
@@ -1504,7 +1503,7 @@ _XDI:       di
 ;               DO-loop runs n times, and an inner DO-loop runs 4 times per
 ;               outer iteration.   n ---
 ;******************************************************************************************
-_MS:        DB      _ENTER
+_MS:        DB      TERSE_COLON_OPCODE
             DW      _0
             DW      _DO
             DW      _LITbyte
@@ -1653,7 +1652,7 @@ rnd:        push    de                  ; SUBROUTINE
 ;******************************************************************************************
 _RANDOM:    call    random
             push    hl
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 
 ;########################################################################################
 ;    CODE RND ( pass range on stack )
@@ -1667,7 +1666,7 @@ _RND:       call    random
             pop     de
             call    ranger
             push    hl
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 
 ;########################################################################################
 ;    CODE UNEQRND .REL
@@ -1703,7 +1702,7 @@ uneqrnd_store:
             ld      d,$00
             ld      (hl),e              ; Store new number in TRACKBYTE
             push    de                  ; Push new number to stack
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 
 ;########################################################################################
 ; { BLOCK 0036 }
@@ -1727,7 +1726,7 @@ color1:     ld      a,(hl)
             inc     c                   ; Next port
             djnz    color1
             exx
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 
 ;########################################################################################
 ;  CODE FLOOD   ( set all color ports to the same value )
@@ -1751,7 +1750,7 @@ FLOOD1:     out     (c),a
             inc     c
             djnz    FLOOD1
             exx
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 
 ;########################################################################################
 ;  : FILL   ( fill screen whith constant data )
@@ -1769,7 +1768,7 @@ FLOOD1:     out     (c),a
 ;        Number of bytes to fill
 ; Out:   Memory filled sequentially with the specified constant
 ;******************************************************************************************
-_FILL:      DB      _ENTER
+_FILL:      DB      TERSE_COLON_OPCODE
             DW      _ROT
             DW      _ROT
             DW      _2DUP
@@ -1913,7 +1912,7 @@ _RELABS:    exx
             push    bc                  ; ( exp/mag+shf )
             push    hl                  ; ( scradr )
             exx
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 
 ;##########################################################################################
 ;    ( UPSIDE DOWN RELABS ROUTINES FOR COCKTAIL MODE USE )
@@ -2167,7 +2166,7 @@ _WRITEP:    push    iy
             exx
             push    hl
             pop     iy
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 
 ;##########################################################################################
 ;    CODE FFWRITEP Y PUSHX, H POP, EXX, B POP, Y POPX, H POP, D POP,
@@ -2195,7 +2194,7 @@ _FFWRITEP:  push    iy
             exx
             push    hl
             pop     iy
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 
 ;##########################################################################################
 ;    { BLOCK 0056 }
@@ -2297,7 +2296,7 @@ _UNSDIV:    exx
             push    hl                  ; H PUSH (Remainder)
             push    de                  ; D PUSH (Quotient)
             exx
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 
 ;##########################################################################################
 ;    { BLOCK 0047 }
@@ -2355,7 +2354,7 @@ snap_code:  exx
             dec     a
             out     (PBYHIGH),a         ; PBYHIGH ($7E)
             exx
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 
 ;##########################################################################################
 ;    { BLOCK 0047 } ...CONTINUED
@@ -2369,7 +2368,7 @@ snap_code:  exx
 ;               and calculates the absolute screen address before calling the
 ;               low-level machine code 'snap' routine.
 ;******************************************************************************************
-_SNAP:      DB      _ENTER              ; Enter TERSE execution
+_SNAP:      DB      TERSE_COLON_OPCODE              ; Compiled colon definition
             DW      _0                  ; Push 0
             DW      _ROT                ; \
             DW      _ROT                ; / Bring X, Y to top
@@ -2595,7 +2594,7 @@ _CPOST:     exx
             push    hl
             push    bc
             exx
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 
 ;##########################################################################################
 ; { BLOCK 0052 }
@@ -2614,7 +2613,7 @@ _CPOST:     exx
 ;******************************************************************************************
 ; ----> SPOST   TERSE Word. Posts an ascii-string on the screen.
 ;******************************************************************************************
-_SPOST:     DB      _ENTER
+_SPOST:     DB      TERSE_COLON_OPCODE
             DW      _OVER               ; OVER
             DW      _plus               ; +
             DW      _SWAP               ; SWAP
@@ -2687,7 +2686,7 @@ _INXMSG:    exx
             call    indexmsg            ; Call low-level string locator
             push    hl                  ; Push resulting string address
             exx
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 
 ;##########################################################################################
 ;       : ICSPOST INXMSG COUNT SPOST ;
@@ -2696,7 +2695,7 @@ _INXMSG:    exx
 ; ----> ICSPOST High-level TERSE word. Takes a message index, converts it to an
 ;               address, counts the string length, and posts it to the screen.
 ;******************************************************************************************
-_ICSPOST:   DB      _ENTER              ; Enter TERSE execution
+_ICSPOST:   DB      TERSE_COLON_OPCODE              ; Compiled colon definition
             DW      _INXMSG             ; Get string address from index
             DW      _Bat_inc7           ; COUNT (Gorf strings use the high-bit flag, so it compiles as B@+7)
             DW      _SPOST              ; Post string to screen
@@ -2710,7 +2709,7 @@ _ICSPOST:   DB      _ENTER              ; Enter TERSE execution
 ; ----> GNAME   High-level TERSE word. Sets up the screen coordinates ($100, $5000)
 ;               and the Exp/Mag attributes ($408) for a string, then calls ICSPOST.
 ;******************************************************************************************
-_GNAME:     DB      _ENTER              ; Enter TERSE execution
+_GNAME:     DB      TERSE_COLON_OPCODE              ; Compiled colon definition
             DW      _gtR                ; >R (Save string index to Return stack)
             DW      _LIT            ; \
             DW      $0100               ; / Push X coordinate ($100)
@@ -2762,7 +2761,7 @@ SPLP:       ld      a,(hl)              ; Read next character
             jr      nz,SPLP             ; If more characters, loop back
             pop     iy                  ; \
             pop     ix                  ; / Restore TERSE stack pointers
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 
 ;##########################################################################################
 ;  { BLOCK 0055 } ...CONTINUED
@@ -2774,7 +2773,7 @@ SPLP:       ld      a,(hl)              ; Read next character
 ;******************************************************************************************
 ; ----> XUP     High-Level TERSE word. Multiplies the top of the stack by $40.
 ;******************************************************************************************
-_XUP:       DB      _ENTER              ; Enter TERSE execution
+_XUP:       DB      TERSE_COLON_OPCODE              ; Compiled colon definition
             DW      _LITbyte            ; \
             DB      $40                 ; / Push literal byte $40
             DW      _star               ; Multiply (*)
@@ -2785,7 +2784,7 @@ _XUP:       DB      _ENTER              ; Enter TERSE execution
 ;               Locates the string, adds the default Exp/Mag attributes ($0428),
 ;               and calls CSPELL to center and draw it.
 ;******************************************************************************************
-_SPELL:     DB      _ENTER              ; Enter TERSE execution
+_SPELL:     DB      TERSE_COLON_OPCODE              ; Compiled colon definition
             DW      _INXMSG             ; Convert string index to address
             DW      _LIT            ; \
             DW      $0428               ; / Push Exp/Mag attributes ($0428)
@@ -2866,7 +2865,7 @@ DGTL:       ld      a,(hl)              ; Read BCD byte
             jr      nz,DGTL             ; Loop if more bytes remain
             pop     iy                  ; \
             pop     ix                  ; / Restore TERSE stack pointers
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 
 ;##########################################################################################
 ;  { BLOCK 0057 }
@@ -2904,7 +2903,7 @@ _DISPBCD2:  pop     hl                  ; Pop BCD value directly into HL
             call    digit               ; Draw lower digit
             pop     iy                  ; \
             pop     ix                  ; / Restore TERSE stack pointers
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 
 ;##########################################################################################
 ; { BLOCK 0058 }
@@ -2995,7 +2994,7 @@ _BCDBUMP:   pop     hl                  ; Pop memory address
             daa                         ; Decimal Adjust Accumulator (Keep it BCD)
             ld      e,a                 ; Move new value to E
             call    wpb_bang            ; Safely write byte back to NVRAM
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 
 ;##########################################################################################
 ; { BLOCK 0059 } ( POINT WRITE ROUTINE STUFF )
@@ -3048,7 +3047,7 @@ _POINT:     exx
             pop     de          ; Pop X Coordinate
             call    UPPOINT     ; Call low-level point drawing routine
             exx
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 
 ;##########################################################################################
 ;   { BLOCKS 0060 TO 0073 }
@@ -4077,7 +4076,7 @@ busaround_done:
 _BMS:       push    bc
             call    busaround
             pop     bc
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 
 ;******************************************************************************************
 ; ----> loadpc  Install a new score address as both MUSPC and STARTPC.
@@ -4150,7 +4149,7 @@ _EMUSIC:    exx                         ; TERSE CODE: initialize music processor
             add     hl,de               ; $D0B5
             ld      (hl),$18            ; Processor 1 maps to ports $10-$17
             call    emusic
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 
 ;******************************************************************************************
 
@@ -4159,7 +4158,7 @@ _BMUSIC:    pop     hl
             ld      iy,$D0B1
             call    bmusic
             pop     iy
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 
 ;******************************************************************************************
 
@@ -4168,7 +4167,7 @@ _PMUSIC:    pop     hl
             ld      iy,$D0B1
             call    pmusic
             pop     iy
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 
 ;******************************************************************************************
 
@@ -4178,7 +4177,7 @@ _MMUSIC:    pop     hl
             ld      iy,$D0B1
             call    mmusic
             pop     iy
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 
 ;******************************************************************************************
 
@@ -4188,7 +4187,7 @@ _MPMUSIC:   pop     hl
             ld      iy,$D0B1
             call    mpmusic
             pop     iy
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 
 ;##########################################################################################
 ;  { BLOCK 0097 }
@@ -4208,7 +4207,7 @@ _E2MUSIC:   exx                         ; TERSE CODE: initialize music processor
             add     hl,de               ; $D0E5
             ld      (hl),$58            ; Processor 2 maps to ports $50-$57
             call    emusic
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 
 ;##########################################################################################
 ;   CODE B2MUSIC H POP, Y PUSHX,
@@ -4219,7 +4218,7 @@ _B2MUSIC:   pop     hl
             ld      iy,$D0E1
             call    bmusic
             pop     iy
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 
 ;##########################################################################################
 ;   CODE P2MUSIC H POP, Y PUSHX,
@@ -4230,7 +4229,7 @@ _P2MUSIC:   pop     hl
             ld      iy,$D0E1
             call    pmusic
             pop     iy
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 
 ;##########################################################################################
 ;   CODE M2MUSIC H POP, D POP, Y PUSHX,
@@ -4242,7 +4241,7 @@ _M2MUSIC:   pop     hl
             ld      iy,$D0E1
             call    mmusic
             pop     iy
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 
 ;##########################################################################################
 ;   CODE MP2MUSIC H POP, D POP, Y PUSHX,
@@ -4254,12 +4253,12 @@ _MP2MUSIC:  pop     hl
             ld      iy,$D0E1
             call    mpmusic
             pop     iy
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 
 ;##########################################################################################
 ;   : SHUTUP EMUSIC E2MUSIC ; -->
 ;##########################################################################################
-SHUTUP:     DB      _ENTER
+SHUTUP:     DB      TERSE_COLON_OPCODE
             DW      _EMUSIC
             DW      _E2MUSIC
             DW      _RETURN
@@ -4320,11 +4319,11 @@ SHUTUP:     DB      _ENTER
 ;##########################################################################################
 _BONE:      pop     hl
             ld      (hl),$01
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 
 _BZERO:     pop     hl
             ld      (hl),$00
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 
 
 ;******************************************************************************************
@@ -4463,7 +4462,7 @@ speak:      in      a,(SETTINGS)
 ;******************************************************************************************
 _SPEAK:     pop     de
             call    speak
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 
 ;##########################################################################################
 ; { BLOCK 0102 }
@@ -5029,7 +5028,7 @@ RKTBL:      DW      SPK_CADET, SPK_CAPT, SPK_COLONEL, SPK_GENERAL, SPK_WARRIOR, 
 ;       "Space Cadet" / "Space Captain" / "Space Colonel" /
 ;       "Space General" / "Space Warrior" / "Space Avenger"
 ;******************************************************************************************
-_GETRANK:   DB      _ENTER
+_GETRANK:   DB      TERSE_COLON_OPCODE
             DW      _LIT
             DW      SKILLFACTOR
             DW      _Bat
@@ -5078,7 +5077,7 @@ COINSOUND2: DB      $02,$56,$13
 ; ----> CNSD    Start COINSOUND1 on music processor 2 through B2MUSIC.
 ;               B2MUSIC is non-preemptive: an active priority score is preserved.
 ;******************************************************************************************
-_CNSD:      DB      _ENTER
+_CNSD:      DB      TERSE_COLON_OPCODE
             DW      _LIT
             DW      COINSOUND1
             DW      _B2MUSIC
@@ -5153,7 +5152,7 @@ LBYTBL:     DW      SPK_CONQUER         ; "Gorfians conquer another galaxy."
 ;
 ;               It then queues one random game-over follow-up from LBYTBL.
 ;******************************************************************************************
-_LBYAK:     DB      _ENTER
+_LBYAK:     DB      TERSE_COLON_OPCODE
             DW      _LITbyte
             DB      $02
             DW      _RND
@@ -5195,7 +5194,7 @@ HITYTBL:    DW      SPK_HAHA            ; "Ha ha ha ha!"                        
 ;
 ;               Entries 0-1 are complete phrases. Entries 2-5 append SPACE + current rank.
 ;******************************************************************************************
-_HITYAK:    DB      _ENTER
+_HITYAK:    DB      TERSE_COLON_OPCODE
             DW      _LIT
             DW      HTYRND              ; Previous HITYTBL selection
             DW      _LITbyte
@@ -5269,13 +5268,13 @@ CLLL:       call    clear1k
             add     a,$04
             ld      d,a
             jp      p,CLLL
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 
 ;******************************************************************************************
-; Terse routine just returns - why ?
+; Empty colon definition used as a null operation in dispatch tables and initialization.
 ;******************************************************************************************
 
-DONULL:     DB      _ENTER
+DONULL:     DB      TERSE_COLON_OPCODE
             DW      _RETURN
 
 ;******************************************************************************************
@@ -5283,7 +5282,7 @@ DONULL:     DB      _ENTER
 ; XY 100 * SWAP 40 * SWAP ;
 ;******************************************************************************************
 
-_XY:        DB      _ENTER
+_XY:        DB      TERSE_COLON_OPCODE
             DW      _LIT
             DW      $0100
             DW      _star
@@ -5298,15 +5297,15 @@ _XY:        DB      _ENTER
             DW      _RETURN
 
             DW      $E9E1
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 ;******************************************************************************************
 ; {Block 105 } ... Continued
 ; INIT GRAPHICS 1 8 OUTP 204 10 OUTP 43 9 OUTP ;
 ;******************************************************************************************
 
 W_1476:
-            DB      _ENTER
-            DW      DONULL		; do nothing ?
+            DB      TERSE_COLON_OPCODE
+            DW      DONULL             ; Null operation
             DW      _1                  ; OUT $01 to port $08 (Hi-Res)
             DW      _LITbyte
             DB      $08
@@ -5437,7 +5436,7 @@ W_1476:
             call    $1526
             push    hl
             ei
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 
 ;******************************************************************************************
 
@@ -5570,7 +5569,7 @@ L1595:      dec     l
             pop     ix
             pop     iy
             exx
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 ;******************************************************************************************
             ld      l,(iy+$00)
             ld      h,(iy+$01)
@@ -5622,21 +5621,21 @@ L1595:      dec     l
 _PWB:       pop     hl
             pop     de
             call    wpb_bang            ; Write byte to protected memory
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 ;******************************************************************************************
 ; write byte 01 to protected memory
 ;******************************************************************************************
 _P1:        pop     hl
             ld      e,$01
             call    wpb_bang            ; Write byte to protected memory
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 ;******************************************************************************************
 ; write byte 00 to protected memory
 ;******************************************************************************************
 _P0:        pop     hl
             ld      e,$00
             call    wpb_bang            ; Write byte to protected memory
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 ;******************************************************************************************
 ; decrement byte in protected memory
 ;******************************************************************************************
@@ -5645,7 +5644,7 @@ _PDEC:
             ld      e,(hl)
             dec     e
             call    wpb_bang            ; Write byte to protected memory
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 ;******************************************************************************************
 ; add to byte in protected memory
 ;******************************************************************************************
@@ -5655,7 +5654,7 @@ _PADD:      pop     hl
             add     a,e
             ld      e,a
             call    wpb_bang            ; Write byte to protected memory
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 ;******************************************************************************************
 ; increment byte in protected memory
 ;******************************************************************************************
@@ -5663,7 +5662,7 @@ _PINC:      pop     hl
             ld      e,(hl)
             inc     e
             call    wpb_bang            ; Write byte to protected memory
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 ;******************************************************************************************
 ; sub from byte in protected memory
 ;******************************************************************************************
@@ -5673,7 +5672,7 @@ _PSUB:      pop     hl
             sub     e
             ld      e,a
             call    wpb_bang            ; Write byte to protected memory
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 ;******************************************************************************************
             and     $0F
             ld      e,a
@@ -5773,7 +5772,7 @@ WPNOZ:      ld      hl,$D00B
             call    wpb_bang            ; Write byte to protected memory
             jp      L1593               ; Fixed delay, then cold restart
             exx
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 
 ;******************************************************************************************
             nop
@@ -5990,7 +5989,7 @@ WPNOZ:      ld      hl,$D00B
             adc     a,$00
             call    $188C
             exx
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 
 ;******************************************************************************************
 ; ZEROSCORE - ( ZERO QUAD BYTES OF MEMORY )
@@ -6006,7 +6005,7 @@ zeroscore0: call    wpb_bang            ; Write byte to protected memory
             inc     hl
             djnz    zeroscore0
             exx
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 
 ;******************************************************************************************
             or      e
@@ -6236,13 +6235,13 @@ zeroscore0: call    wpb_bang            ; Write byte to protected memory
             out     ($0F),a
             im      2
             ei
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 ;******************************************************************************************
             ld      a,$B4
             ld      ($D090),a
             ret
 _BARK:      call    $1A60            ; Source-proven dictionary entry used by SHOW4P
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 ;******************************************************************************************
             bit     7,(ix+$00)
             jp      nz,$1A8C
@@ -6973,7 +6972,7 @@ _BARK:      call    $1A60            ; Source-proven dictionary entry used by SH
             pop     iy
             push    hl
             pop     ix
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 ;******************************************************************************************
             rst     $08
             dec     a
@@ -7006,7 +7005,7 @@ _BARK:      call    $1A60            ; Source-proven dictionary entry used by SH
             pop     iy
             push    hl
             pop     ix
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 ;******************************************************************************************
             rst     $08
             dec     a
@@ -7067,7 +7066,7 @@ _BARK:      call    $1A60            ; Source-proven dictionary entry used by SH
             pop     ix
             push    hl
             pop     iy
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 ;******************************************************************************************
             bit     7,(iy+$00)
             jp      z,$2112
@@ -7991,7 +7990,7 @@ playkbs:    ld      hl,KBSCORE
             ret
             call    $27DB
             push    hl
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 ;******************************************************************************************
             rst     $08
             ld      l,l
@@ -8325,7 +8324,7 @@ playkbs:    ld      hl,KBSCORE
             set     0,b
             in      a,(c)
             exx
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 ;******************************************************************************************
             rst     $08
             djnz    $29C1
@@ -8543,7 +8542,7 @@ play_player_shot_sound:
             pop     bc
             pop     iy
             pop     ix
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 ;******************************************************************************************
             ld      a,h
             and     a
@@ -8666,7 +8665,7 @@ play_player_shot_sound:
             exx
             pop     iy
             pop     ix
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 ;******************************************************************************************
             call    random
             ld      a,l
@@ -9128,7 +9127,7 @@ creditcheck:
             pop     iy
             pop     ix
             pop     bc
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 ;******************************************************************************************
             rst     $08
             ld      l,l
@@ -9343,7 +9342,7 @@ creditcheck:
             call    $2FED
             pop     ix
             pop     bc
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 ;******************************************************************************************
             call    $2EA4
             ret     z
@@ -9361,7 +9360,7 @@ creditcheck:
             call    $3095
             pop     iy
             pop     bc
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 ;******************************************************************************************
             ld      c,(ix+$29)
             call    $2F67
@@ -9622,7 +9621,7 @@ creditcheck:
             ld      hl,$0000
             push    hl
             exx
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 ;******************************************************************************************
             rst     $08
             and     b
@@ -9861,7 +9860,7 @@ creditcheck:
             jp      nz,$3402
             inc     l
             push    hl
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 ;******************************************************************************************
             rst     $08
             ld      l,l
@@ -10061,7 +10060,7 @@ creditcheck:
             nop
             jr      nc,$34E6
             ld      ($0061),a
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 ;******************************************************************************************
             rst     $08
             halt
@@ -10087,14 +10086,14 @@ creditcheck:
             ld      d,a
             djnz    $3518
             exx
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 
 ;******************************************************************************************
 ; setrel - set indirect memory pointers
 ; Description & Context: Set RELABS and FFRELABS to correct jump address for
 ;                        normal or cocktail mode
 ;******************************************************************************************
-_setrel:    DB      _ENTER
+_setrel:    DB      TERSE_COLON_OPCODE
             DW     _LITbyte
             DB      $C3                 ; Z80 opcode for JP
             DW     _0                   ; get address for 0th element of byte array
@@ -10235,7 +10234,7 @@ setrel1:    DW     _RETURN
 ; and resets the game's dynamic difficulty (SKILLFACTOR).
 ;******************************************************************************************
 _STARTGAME:
-            DB      _ENTER              ; Enter TERSE execution
+            DB      TERSE_COLON_OPCODE              ; Compiled colon definition
             DW      _LIT            ;
             DW      P1SCR               ; / Push address of P1SCR ($D00C)
             DW      _ZEROSCORE           ; ZEROSCORE (Clears 3 BCD score bytes)
@@ -10287,7 +10286,7 @@ _STARTGAME:
             jp      nc,$361A
             ld      a,$08
             out     ($0E),a
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 ;******************************************************************************************
             exx
             pop     bc
@@ -10302,7 +10301,7 @@ _STARTGAME:
             inc     de
             djnz    $363B
             exx
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 ;******************************************************************************************
             exx
             pop     bc
@@ -10329,7 +10328,7 @@ _STARTGAME:
             inc     hl
             push    hl
             exx
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 ;******************************************************************************************
             exx
             ld      hl,$DCCD
@@ -10353,7 +10352,7 @@ _STARTGAME:
             inc     hl
             push    hl
             exx
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 ;******************************************************************************************
             exx
             pop     hl
@@ -10372,7 +10371,7 @@ _STARTGAME:
             cp      $02
             jr      nz,$36A2
             exx
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 ;******************************************************************************************
             rst     $08
             sbc     a,b
@@ -10569,7 +10568,7 @@ _STARTGAME:
             inc     de
             djnz    $37C7
             pop     bc
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 ;******************************************************************************************
             push    bc
             ld      a,($DD9C)
@@ -10584,7 +10583,7 @@ _STARTGAME:
             call    $3745
             ei
             pop     bc
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 ;******************************************************************************************
             push    bc
             ld      a,($DD9C)
@@ -10596,7 +10595,7 @@ _STARTGAME:
             call    $3745
             ei
             pop     bc
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 ;******************************************************************************************
             ld      a,($DD9C)
             and     a
@@ -10867,7 +10866,7 @@ _FSTART:    push    ix
             pop     iy
             push    hl
             pop     ix
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 
 ;******************************************************************************************
 ;
@@ -11426,7 +11425,7 @@ scroll_swll: di                         ; LABEL SWLL
             pop     ix
             pop     iy
             pop     bc
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 
 ;******************************************************************************************
 ;
@@ -11458,7 +11457,7 @@ _LITERANK:  exx
             ld      b,a
             in      a,(c)
             exx
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 
 ;******************************************************************************************
 ;
@@ -12110,7 +12109,7 @@ showport:   exx
             pop     iy
             pop     ix
             exx
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 
 ;    { Block 254 Continued }
 ;    : SHOW4P BARK 4000 10 showport
@@ -12119,7 +12118,7 @@ showport:   exx
 ; SHOW4P compiles BARK as the dictionary entry at $1A66, now labeled at
 ; its actual implementation rather than kept as a numeric/equate-only cell.
 
-_SHOW4P:    DB      _ENTER
+_SHOW4P:    DB      TERSE_COLON_OPCODE
             DW      _BARK
             DW      _LIT
             DW      $4000
@@ -12170,7 +12169,7 @@ sumup_loop: ld      a,(hl)
             inc     c
             push    bc
             exx
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 
 
 ;    { Block 254 Continued }
@@ -12188,7 +12187,7 @@ ROMCHARS:   DB      $41,$42,$43,$44,$00,$00,$00,$00
 ;    SHOW4P ;
 ;    -->
 
-_CKCHIP:    DB      _ENTER
+_CKCHIP:    DB      TERSE_COLON_OPCODE
             DW      _DUP
             DW      sumup
             DW      _0BRANCH
@@ -12989,7 +12988,7 @@ ASTRO_BATTLES_INVADER_BULLET_2:
             djnz    $837A
             pop     ix
             exx
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 ;******************************************************************************************
             ld      hl,($D9B5)
             ld      de,($D9B7)
@@ -13273,7 +13272,7 @@ ASTRO_BATTLES_INVADER_BULLET_2:
             ld      a,($D94B)
             add     a,$05
             ld      ($D0F0),a           ; Processor 2 TIMEBASE (IY=$D0E1, offset $0F)
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 ;******************************************************************************************
             inc     c
             nop
@@ -13564,7 +13563,7 @@ ASTRO_BATTLES_INVADER_BULLET_2:
             pop     bc
             pop     iy
             pop     ix
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 ;******************************************************************************************
             in      a,($65)
             and     h
@@ -15015,7 +15014,7 @@ LASER_ATTACK_BUG_SHIP_COMPACT:
             pop     bc
             pop     iy
             pop     ix
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 ;******************************************************************************************
             push    de
             ld      a,($D08A)
@@ -15226,7 +15225,7 @@ play_attack_fighter_laser_sound:
             pop     iy
             pop     ix
             ei
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 ;******************************************************************************************
             ld      hl,($DDAA)
             ld      a,(hl)
@@ -15236,7 +15235,7 @@ play_attack_fighter_laser_sound:
             jp      nz,$90C1
             ld      hl,$D08A
             inc     (hl)
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 ;******************************************************************************************
             call    $389B
             call    $2E67
@@ -15280,7 +15279,7 @@ play_attack_fighter_laser_sound:
             pop     ix
             push    hl
             exx
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 ;******************************************************************************************
             rst     $08
             adc     a,e
@@ -16476,7 +16475,7 @@ play_galaxian_attack_sound:
             pop     iy
             push    hl
             pop     ix
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 ;******************************************************************************************
             push    hl
             ld      a,(ix+$14)
@@ -17016,7 +17015,7 @@ play_galaxian_attack_sound:
             exx
             pop     iy
             pop     ix
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 ;******************************************************************************************
             ld      a,($D9AB)
             and     a
@@ -18023,7 +18022,7 @@ SPACE_WARP_WHITE_OBJECT_LARGE_2:
             ld      ($DDA2),bc
             ld      c,l
             ld      b,h
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 ;******************************************************************************************
             pop     hl
             ld      ($D0A5),hl
@@ -18031,7 +18030,7 @@ SPACE_WARP_WHITE_OBJECT_LARGE_2:
             ld      ($DDA2),bc
             ld      c,l
             ld      b,h
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 ;******************************************************************************************
             rst     $08
             ld      hl,($6D01)
@@ -18450,7 +18449,7 @@ SPACE_WARP_WHITE_OBJECT_LARGE_2:
             inc     hl
             pop     iy
             push    hl
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 ;******************************************************************************************
             rst     $08
             rst     $28
@@ -18611,7 +18610,7 @@ SPACE_WARP_WHITE_OBJECT_LARGE_2:
             di
             pop     iy
             push    hl
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 ;******************************************************************************************
             ld      d,b
             nop
@@ -20145,7 +20144,7 @@ FLAG_SHIP_FIREBALL_FULL:
             ld      bc,$0182
             ldir
             exx
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 ;******************************************************************************************
             inc     c
             nop
@@ -20385,7 +20384,7 @@ FLAG_SHIP_FIREBALL_FULL:
             exx
             pop     iy
             pop     ix
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 ;******************************************************************************************
             ld      a,r
             and     $01
@@ -20423,7 +20422,7 @@ FLAG_SHIP_FIREBALL_FULL:
             pop     bc
             pop     iy
             pop     ix
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 ;******************************************************************************************
             rst     $08
             sbc     a,a
@@ -20686,7 +20685,7 @@ FLAG_SHIP_FIREBALL_FULL:
             pop     ix
             push    hl
             exx
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 ;******************************************************************************************
             exx
             pop     de
@@ -20708,7 +20707,7 @@ FLAG_SHIP_FIREBALL_FULL:
             pop     iy
             pop     ix
             exx
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 ;******************************************************************************************
             scf
             ld      (de),a
@@ -21453,17 +21452,17 @@ FLAG_SHIP_FIREBALL_FULL:
             cp      $0C
             jp      nz,$B34E
             exx
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 ;******************************************************************************************
 LB35C:      exx
             ld      bc,$0E15
             in      a,(c)
             exx
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 
 ;******************************************************************************************
 W_B365:
-            DB      _ENTER
+            DB      TERSE_COLON_OPCODE
             DW      _LIT
             DW      MISSION
             DW      _Bat
@@ -21479,7 +21478,7 @@ W_B365:
 
 ;******************************************************************************************
 W_B37E:
-            DB      _ENTER
+            DB      TERSE_COLON_OPCODE
             DW      _LIT
             DW      $2000
             DW      _0
@@ -21638,7 +21637,7 @@ SPK_PREPARE:
 ;                  attract chatter in goyak.
 ;******************************************************************************************
 SPKCOIN:
-            DB      _ENTER
+            DB      TERSE_COLON_OPCODE
             DW      _LIT
             DW      PHONECOUNT
             DW      _Bat
@@ -21671,7 +21670,7 @@ spkcoin2:   DW      _RETURN
 ; ----> SPEAKGORF        Return complete mission-start primitive: "I am the Gorfian Empire."
 ;******************************************************************************************
 SPEAKGORF:
-            DB      _ENTER
+            DB      TERSE_COLON_OPCODE
             DW      _LIT
             DW      SPK_GORF
             DW      _RETURN
@@ -21679,7 +21678,7 @@ SPEAKGORF:
 ; ----> SPEAKROBOTS      Return complete mission-start primitive: "Gorfian robots... attack! attack!"
 ;******************************************************************************************
 SPEAKROBOTS:
-            DB      _ENTER
+            DB      TERSE_COLON_OPCODE
             DW      _LIT
             DW      SPK_ROBOTS
             DW      _RETURN
@@ -21687,7 +21686,7 @@ SPEAKROBOTS:
 ; ----> SPEAKDOOM        Queue "You will meet a Gorfian doom", queue "Space", return current-rank primitive.
 ;******************************************************************************************
 SPEAKDOOM:
-            DB      _ENTER
+            DB      TERSE_COLON_OPCODE
             DW      _LIT
             DW      SPK_DOOM
             DW      _SPEAK
@@ -21697,7 +21696,7 @@ SPEAKDOOM:
 ; ----> SPEAKSURVIVAL    Queue "Survival is impossible", queue "Space", return current-rank primitive.
 ;******************************************************************************************
 SPEAKSURVIVAL:
-            DB      _ENTER
+            DB      TERSE_COLON_OPCODE
             DW      _LIT
             DW      SPK_SURVIVAL
             DW      _SPEAK
@@ -21707,7 +21706,7 @@ SPEAKSURVIVAL:
 ; ----> SPEAKESCAPE      Return complete mission-start primitive: "You cannot escape the Gorfian robots."
 ;******************************************************************************************
 SPEAKESCAPE:
-            DB      _ENTER
+            DB      TERSE_COLON_OPCODE
             DW      _LIT
             DW      SPK_ESCAPE
             DW      _RETURN
@@ -21715,7 +21714,7 @@ SPEAKESCAPE:
 ; ----> SPEAKROBOWARRIOR Queue "Robot warriors, seek and destroy the", queue "Space", return current-rank primitive.
 ;******************************************************************************************
 SPEAKROBOWARRIOR:
-            DB      _ENTER
+            DB      TERSE_COLON_OPCODE
             DW      _LIT
             DW      SPK_ROBOWARRIOR
             DW      _SPEAK
@@ -21725,7 +21724,7 @@ SPEAKROBOWARRIOR:
 ; ----> SPEAKGORFIAN     Return complete mission-start primitive: "My Gorfian robots are unbeatable!"
 ;******************************************************************************************
 SPEAKGORFIAN:
-            DB      _ENTER
+            DB      TERSE_COLON_OPCODE
             DW      _LIT
             DW      SPK_GORFIAN
             DW      _RETURN
@@ -21733,7 +21732,7 @@ SPEAKGORFIAN:
 ; ----> SPEAKIAM         Return complete mission-start primitive: "I am a Gorfian consciousness."
 ;******************************************************************************************
 SPEAKIAM:
-            DB      _ENTER
+            DB      TERSE_COLON_OPCODE
             DW      _LIT
             DW      SPK_IAM
             DW      _RETURN
@@ -21741,7 +21740,7 @@ SPEAKIAM:
 ; ----> SPEAKPREPARE     Queue "Prepare yourself for annihilation", queue "Space", return current-rank primitive.
 ;******************************************************************************************
 SPEAKPREPARE:
-            DB      _ENTER
+            DB      TERSE_COLON_OPCODE
             DW      _LIT
             DW      SPK_PREPARE
             DW      _SPEAK
@@ -21751,7 +21750,7 @@ SPEAKPREPARE:
 ; ----> SPEAKPRIS        Return complete mission-start primitive: "Gorfians take no prisoners!"
 ;******************************************************************************************
 SPEAKPRIS:
-            DB      _ENTER
+            DB      TERSE_COLON_OPCODE
             DW      _LIT
             DW      SPK_PRIS
             DW      _RETURN
@@ -21778,7 +21777,7 @@ SPEAKPRIS:
 ;       Prepare yourself for annihilation, Space <rank>.
 ;******************************************************************************************
 SPEAKSTART:
-            DB      _ENTER
+            DB      TERSE_COLON_OPCODE
             DW      _LIT
             DW      MSYRND
             DW      _LITbyte
@@ -21807,7 +21806,7 @@ SPEAKSTART:
 ;                   paths and the player-turn transition path all call this word.
 ;******************************************************************************************
 _TURNINTRO:
-            DB      _ENTER
+            DB      TERSE_COLON_OPCODE
             DW      _0
             DW      _FLOOD
             DW      LB35C
@@ -21826,7 +21825,7 @@ _TURNINTRO:
             DW      $FDD3
             DW      $5A21
             DW      $0300
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
             DW      $C3C1
             DW      $B54F
 ;******************************************************************************************
@@ -21842,7 +21841,7 @@ _TURNINTRO:
 ;                   No decoded resident control-flow path directly references that primitive.
 ;******************************************************************************************
 W_B561:
-            DB      _ENTER
+            DB      TERSE_COLON_OPCODE
             DW      _LIT
             DW      $D951
             DW      _at
@@ -21903,7 +21902,7 @@ W_B561:
 
 ;******************************************************************************************
 W_B5D1:
-            DB      _ENTER
+            DB      TERSE_COLON_OPCODE
             DW      _LIT
             DW      $D09F
             DW      _bang
@@ -21918,7 +21917,7 @@ W_B5D1:
             DW      _RETURN
 ;******************************************************************************************
 W_B5EA:
-            DB      _ENTER
+            DB      TERSE_COLON_OPCODE
             DW      $B32C
             DW      _DI
             DW      _LITbyte
@@ -21965,7 +21964,7 @@ W_B5EA:
             DW      _RETURN
 ;******************************************************************************************
 W_B63B:
-            DB      _ENTER
+            DB      TERSE_COLON_OPCODE
             DW      _LITbyte
             DB      $13
             DW      _INP
@@ -21977,7 +21976,7 @@ W_B63B:
             DW      _RETURN
 ;******************************************************************************************
 W_B64C:
-            DB      _ENTER
+            DB      TERSE_COLON_OPCODE
             DW      W_B63B
             DW      _LIT
             DW      COINSIN
@@ -21995,7 +21994,7 @@ W_B64C:
             DW      _RETURN
 ;******************************************************************************************
 W_B66A:
-            DB      _ENTER
+            DB      TERSE_COLON_OPCODE
             DW      W_B63B
             DW      _LIT
             DW      COINSIN
@@ -22017,7 +22016,7 @@ W_B66A:
             DW      _RETURN
 ;******************************************************************************************
 W_B68E:
-            DB      _ENTER
+            DB      TERSE_COLON_OPCODE
             DW      _LITbyte
             DB      $13
             DW      _INP
@@ -22028,7 +22027,7 @@ W_B68E:
             DW      _RETURN
 ;******************************************************************************************
 W_B69D:
-            DB      _ENTER
+            DB      TERSE_COLON_OPCODE
             DW      W_B68E
             DW      _0BRANCH
             DW      $B6AD
@@ -22040,7 +22039,7 @@ W_B69D:
             DW      _RETURN
 ;******************************************************************************************
 W_B6AF:
-            DB      _ENTER
+            DB      TERSE_COLON_OPCODE
             DW      _STARTGAME
             DW      _LIT
             DW      DEMOMODE
@@ -22061,7 +22060,7 @@ W_B6AF:
             DW      _RETURN
 ;******************************************************************************************
 W_B6D4:
-            DB      _ENTER
+            DB      TERSE_COLON_OPCODE
             DW      _LIT
             DW      $B2F9
             DW      _COLOR
@@ -22097,7 +22096,7 @@ CS1:        ld      hl,$0000
 CS2:        ld      hl,$0001
 CS3:        push    hl
             exx
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 
 ;******************************************************************************************
 WRITESCORE:
@@ -22114,13 +22113,13 @@ WS0:        ld      a,(de)
             inc     de
             djnz    WS0
             exx
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 
 ;******************************************************************************************
 ; get byte at $DDA0
 ;******************************************************************************************
 READ_DDA0:
-            DB      _ENTER
+            DB      TERSE_COLON_OPCODE
             DW      _LIT
             DW      $DDA0
             DW      _at
@@ -22131,7 +22130,7 @@ READ_DDA0:
 ;******************************************************************************************
 
 SCANHST:
-            DB      _ENTER              ; Player score and Address of relevant high score table on stack
+            DB      TERSE_COLON_OPCODE              ; Player score and Address of relevant high score table on stack
             DW      _LITbyte
             DB      $05
             DW      _0
@@ -22199,7 +22198,7 @@ scanhstlp:  DW      _LOOP
 ; Get the base address of the relevant high score table
 ;******************************************************************************************
 GETHSARRAY:
-            DB      _ENTER
+            DB      TERSE_COLON_OPCODE
             DW      _LIT
             DW      INITFB
             DW      _Bat
@@ -22215,7 +22214,7 @@ geths1:     DW      SCANHST             ; Check to see if score makes table
 
 ;******************************************************************************************
 W_B7AD:
-            DB      _ENTER
+            DB      TERSE_COLON_OPCODE
             DW      READ_DDA0
             DW      _0BRANCH
             DW      $B7CD
@@ -22237,7 +22236,7 @@ W_B7AD:
 
 ;******************************************************************************************
 W_B7D1:
-            DB      _ENTER
+            DB      TERSE_COLON_OPCODE
             DW      _LITbyte
             DB      $FF
             DW      _AND
@@ -22281,7 +22280,7 @@ W_B7D1:
 
 ;******************************************************************************************
 W_B81F:
-            DB      _ENTER
+            DB      TERSE_COLON_OPCODE
             DW      _LITbyte
             DB      $13
             DW      _INP
@@ -22296,7 +22295,7 @@ W_B81F:
 
 ;******************************************************************************************
 W_B834:
-            DB      _ENTER
+            DB      TERSE_COLON_OPCODE
             DW      READ_DDA0
             DW      _LIT
             DW      $0428
@@ -22308,7 +22307,7 @@ W_B834:
 
 ;******************************************************************************************
 W_B845:
-            DB      _ENTER
+            DB      TERSE_COLON_OPCODE
             DW      W_B81F
             DW      W_B834
             DW      _LITbyte
@@ -22340,7 +22339,7 @@ W_B845:
 
 ;******************************************************************************************
 W_B87A:
-            DB      _ENTER
+            DB      TERSE_COLON_OPCODE
             DW      _0
             DW      _BARRAY
             DW      HISCR2
@@ -22364,7 +22363,7 @@ W_B87A:
 
 ;******************************************************************************************
 W_B89E:
-            DB      _ENTER
+            DB      TERSE_COLON_OPCODE
             DW      _LIT
             DW      P1HSP
             DW      _P0
@@ -22382,7 +22381,7 @@ W_B89E:
 
 ;******************************************************************************************
 W_B8BB:
-            DB      _ENTER
+            DB      TERSE_COLON_OPCODE
             DW      _LIT
             DW      COINS
             DW      _P0
@@ -22420,7 +22419,7 @@ W_B8BB:
 
 ;******************************************************************************************
 LB900:
-            DB      _ENTER
+            DB      TERSE_COLON_OPCODE
             DW      _TURNINTRO
             DW      $B561
             DW      _LIT
@@ -22439,7 +22438,7 @@ LB900:
 
 ;******************************************************************************************
 W_B91F:
-            DB      _ENTER
+            DB      TERSE_COLON_OPCODE
             DW      _LIT
             DW      COINSIN
             DW      _Bat
@@ -22468,7 +22467,7 @@ W_B91F:
 
 ;******************************************************************************************
 W_B952:
-            DB      _ENTER
+            DB      TERSE_COLON_OPCODE
             DW      _TURNINTRO
             DW      $B561
             DW      _LIT
@@ -22522,7 +22521,7 @@ W_B952:
 
 ;******************************************************************************************
 W_B9B3:
-            DB      _ENTER
+            DB      TERSE_COLON_OPCODE
             DW      _LITbyte
             DB      $07
             DW      W_B5EA
@@ -22569,7 +22568,7 @@ W_B9B3:
             DW      _RETURN
 ;******************************************************************************************
 W_BA0A:
-            DB      _ENTER
+            DB      TERSE_COLON_OPCODE
             DW      _LIT
             DW      COINSIN
             DW      _Bat
@@ -22657,7 +22656,7 @@ W_BA0A:
             dec     c
             jr      nz,$BA6B
             exx
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 ;******************************************************************************************
             inc     c
             nop
@@ -23173,10 +23172,10 @@ W_BA0A:
             exx
             jr      nz,$BD05
             exx
-            DW      _DSPATCH
+            DW      TERSE_NEXT_OPCODE
 ;******************************************************************************************
 GOSHOW:
-            DB      _ENTER
+            DB      TERSE_COLON_OPCODE
             DW      _LITbyte
             DB      $10
             DW      _INP
@@ -23200,7 +23199,7 @@ GOSHOW:
             DW      _RETURN
 ;******************************************************************************************
 W_BD75:
-            DB      _ENTER
+            DB      TERSE_COLON_OPCODE
             DW      _0
             DW      _DO
             DW      GOSHOW
@@ -23213,7 +23212,7 @@ W_BD75:
 ; { GAME OVER - BLOCK 0115 }
 ; : CHECKBUTT 10 INP 20 AND 0= IF TRYZ THEN 10 INP 10 AND 0= IF TRY1 THEN ;
 ;****************************************************************************************
-_CHECKBUTT: DB      _ENTER
+_CHECKBUTT: DB      TERSE_COLON_OPCODE
             DW      _LITbyte
             DB      $10
             DW      _INP
@@ -23235,9 +23234,9 @@ _CHECKBUTT: DB      _ENTER
             DW      $BCB9               ; Enters here when diagnostics switch flipped first time
             DW      $16C7               ;
 
-            DW      $B32C               ; ??? RST 8 - ENTER ???
+            DW      $B32C
 
-            DW      $B341               ; ??? RST 8 - ENTER ???
+            DW      $B341
 
             DB      $7E
             DB      $B3
@@ -23633,7 +23632,7 @@ LBDA5:      DW      _RETURN             ; RETURN - gets RSP value and goes to it
 ;                   silences the audio, and begins checking for coins to
 ;                   either start a game or loop the Attract Mode.
 ;******************************************************************************************
-_GOS:               DB      _ENTER              ; Enter TERSE execution
+_GOS:               DB      TERSE_COLON_OPCODE              ; Compiled colon definition
                     DW      _LIT            ;
                     DW      DEMOMODE            ; / Push address of DEMOMODE ($D001)
                     DW      _P1                 ; WPBONE (Write Protect 1 - Sets Game Over flag)
@@ -23736,7 +23735,7 @@ LBFAA:              ld      bc, _GOS            ; Load BC with address of GOS ro
 ;   and increments the CRASHCTR right before checking NPLAYERS.
 ;#########################################################################
 _RESTART:
-            DB      _ENTER
+            DB      TERSE_COLON_OPCODE
             DW      _CHECKBUTT          ; [ROM PATCH] (Calls the newly renamed button check)
             DW      _WPCLEAR            ; WPCLEAR (Clear write-protected RAM)
             DW      _LIT            ;

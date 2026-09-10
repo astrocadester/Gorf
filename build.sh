@@ -40,6 +40,17 @@ readonly -a ENGLISH_ROM_NAMES=(
     "gorf-e.bin" "gorf-f.bin" "gorf-g.bin" "gorf-h.bin"
 )
 
+readonly -a PROGRAM2_ROM_SHA1=(
+    "76e2e3ad1a66755f1a369167fdb157690fd44a52"
+    "2601faf12d0ab4972c5535ffd722b03ecd8c097c"
+    "0b363a71d7585a4828e08668ebb2999c55e02721"
+    "392214cc6ed4155bfe022d36f0f86c2594a5ab57"
+    "720fb8b48e20c1fc281d8804259016c3c5364a07"
+    "9c9d6d3bfee6556dc7a01de81d6148dd02f04fc9"
+    "9edccceea5af015275582553ed238c40c73d8f4f"
+    "5aa8d824814ee1c30eaf0044da78d3aa8220dcaa"
+)
+
 # Program-2 German/Klingon MAME member names
 readonly -a GERMAN_ROM_NAMES=(
     "873a.x1" "873b.x2" "873c.x3" "873d.x4"
@@ -121,7 +132,7 @@ prepare_output_directories() {
 }
 
 assemble_source() {
-    log "[2/4] Assembling $SOURCE_NAME"
+    log "[2/5] Assembling $SOURCE_NAME"
     log "      zmac: $ZMAC_BIN"
 
     if "$ZMAC_BIN" --version 2>&1 | grep -q '1\.3'; then
@@ -146,7 +157,7 @@ assemble_source() {
 
 assemble_german() {
     [[ -f "$GERMAN_SOURCE" ]] || fail "German source file not found: $GERMAN_SOURCE"
-    log "[2.5/4] Assembling Optional German ROM: GERMAN_X11.asm"
+    log "[2.5/5] Assembling Optional German ROM: GERMAN_X11.asm"
     local german_tmp_cim="$BUILD_DIR/GERMAN_X11.cim"
 
     if "$ZMAC_BIN" --version 2>&1 | grep -q '1\.3'; then
@@ -173,7 +184,7 @@ assemble_german() {
 
 assemble_french() {
     [[ -f "$FRENCH_SOURCE" ]] || fail "French source file not found: $FRENCH_SOURCE"
-    log "[2.5/4] Assembling Optional French ROM: FRENCH_X11.asm"
+    log "[2.5/5] Assembling Optional French ROM: FRENCH_X11.asm"
     local french_tmp_cim="$BUILD_DIR/FRENCH_X11.cim"
 
     if "$ZMAC_BIN" --version 2>&1 | grep -q '1\.3'; then
@@ -200,7 +211,7 @@ assemble_french() {
 
 assemble_klingon() {
     [[ -f "$KLINGON_SOURCE" ]] || fail "Klingon source file not found: $KLINGON_SOURCE"
-    log "[2.5/4] Assembling Optional Klingon ROM: KLINGON_X11.asm"
+    log "[2.5/5] Assembling Optional Klingon ROM: KLINGON_X11.asm"
     local klingon_tmp_cim="$BUILD_DIR/KLINGON_X11.cim"
 
     if "$ZMAC_BIN" --version 2>&1 | grep -q '1\.3'; then
@@ -237,7 +248,7 @@ slice_roms() {
     cim_size="$(stat -c '%s' "$CIM_FILE")"
     (( cim_size > ROM_ADDRESSES[${#ROM_ADDRESSES[@]} - 1] )) || fail "Assembled image is too short for the Gorf ROM map: $cim_size bytes"
 
-    log "[3/4] Splitting the CPU image into 4 KB Gorf ROMs"
+    log "[3/5] Splitting the CPU image into 4 KB Gorf ROMs"
     log "      The video-memory gap at \$4000-\$7FFF is not packaged."
 
     for index in "${!ROM_NAMES[@]}"; do
@@ -253,6 +264,29 @@ slice_roms() {
         (( output_size == ROM_SIZE )) || fail "$rom_name is $output_size bytes; expected $ROM_SIZE"
 
         printf '  %-12s CPU $%04X-$%04X %5d bytes\n' "$rom_name" "$start_address" "$end_address" "$output_size"
+    done
+}
+
+verify_roms() {
+    local index
+    local rom_name
+    local rom_file
+    local expected_sha1
+    local actual_sha1
+
+    log "[4/5] Verifying Program-2 ROM SHA1 values"
+
+    for index in "${!ROM_NAMES[@]}"; do
+        rom_name="${ROM_NAMES[$index]}"
+        rom_file="$ROMS_DIR/$rom_name"
+        expected_sha1="${PROGRAM2_ROM_SHA1[$index]}"
+        actual_sha1="$(sha1sum -- "$rom_file")"
+        actual_sha1="${actual_sha1%% *}"
+
+        [[ "$actual_sha1" == "$expected_sha1" ]] ||
+            fail "$rom_name SHA1 mismatch: expected $expected_sha1, got $actual_sha1"
+
+        printf '  verified  %-12s %s\n' "$rom_name" "$actual_sha1"
     done
 }
 
@@ -380,6 +414,7 @@ main() {
     require_command stat
     require_command tr
     require_command zip
+    require_command sha1sum
 
     ZMAC_BIN="$(resolve_zmac)"
 
@@ -387,7 +422,7 @@ main() {
     log "  source: $SOURCE_FILE"
     log "  output: $ROMS_DIR"
     log
-    log "[1/4] Preparing clean build and ROM output"
+    log "[1/5] Preparing clean build and ROM output"
     prepare_output_directories
 
     assemble_source
@@ -402,7 +437,9 @@ main() {
 
     slice_roms
 
-    log "[4/4] Creating $ZIP_NAME"
+    verify_roms
+
+    log "[5/5] Creating $ZIP_NAME"
     create_zip
 
     log

@@ -2,7 +2,7 @@
 
 Source: *TERSE Standard Glossary, 9/21/81* (317 verbs). Every verb from the glossary appears exactly once below — either in a **Runtime** category (Part 1, usable by compiled Gorf game code running on the built-in TERSE interpreter) or in the **Excluded / Development-Only** section (Part 2, tools for writing/editing/compiling/debugging TERSE source that would not be present in — or callable by — the shipped game).
 
-**Four items are flagged with `*`** because the glossary's own wording left me genuinely unsure which side of the line they fall on. I made a judgment call for each (noted in the flag list at the very end) — please move them if you know otherwise.
+Four entries carry an uncertainty marker where the glossary does not by itself establish whether a shipped Gorf runtime exposes the word. The notes at the end identify each classification boundary.
 
 ---
 
@@ -52,7 +52,7 @@ Source: *TERSE Standard Glossary, 9/21/81* (317 verbs). Every verb from the glos
 | `BIT-CALC` | Calculates bit mask and address for a specified bit position. |
 | `BIT@` | Reads bit position m from address n. |
 | `BMOVE` | Block-transfers n bytes from address p to address q. |
-| `BONE` | Stores a 16-bit word value of 1 at address p. |
+| `BONE` | Stores the byte value 1 at address p. Gorf implements this as `LD (HL),$01`. |
 | `BZERO` | Stores an 8-bit byte value of 0 at address p. |
 | `MOVE` | Moves n 16-bit word cells from address p to address q. |
 | `ONE` | Stores a 16-bit word value of 1 at address p. |
