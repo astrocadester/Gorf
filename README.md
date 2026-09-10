@@ -83,6 +83,9 @@ selection.
 | `docs/RE_PRIORITY.md` | Ordered reverse-engineering work plan |
 | `images/gorf-marquee.jpg` | Gorf marquee used by this README |
 | `images/gorf-memory-map.png` | 64 KB CPU memory map |
+| `images/gorf-terse-dispatch.svg` | TERSE dispatch and colon-call flow |
+| `images/gorf-sound-architecture.svg` | Dual custom-I/O-chip sound path |
+| `images/gorf-speech-architecture.svg` | English and X11 speech paths |
 
 `TERSE_Naming_Guidelines.md` and `TERSE_81_verbs_index.md` define the broader
 TERSE naming policy and original vocabulary used in the source.
@@ -191,15 +194,7 @@ advances `BC` to the next cell, and jumps directly to the selected kernel or
 application word. TERSE is the foreground control architecture for the game,
 not an isolated scripting layer.
 
-```mermaid
-flowchart TD
-    cell["BC points to the next execution cell"] --> dispatch["DSPATCH"]
-    dispatch --> word["Kernel or native word"]
-    word -->|JP through IY| dispatch
-    word -->|RST 08h| enter["TERSE_COLON_ENTRY"]
-    enter --> nested["Nested inline thread"]
-    nested -->|_RETURN| dispatch
-```
+![Gorf TERSE dispatch](images/gorf-terse-dispatch.svg)
 
 ### Register model and dispatch ABI
 
@@ -347,16 +342,7 @@ timers, score cursors, and synthesis state. Native service routines advance
 those arrays and write the sound registers; a foreground interpreter consumes
 compact score programs from ROM.
 
-```mermaid
-flowchart TD
-    event["TERSE or native sound event"] --> start["Select score root and start state"]
-    start --> work["48-byte sound work array"]
-    work --> foreground["Foreground score interpreter"]
-    work --> interrupt["Timed native service"]
-    foreground --> ports["Ports $10-$17 or $50-$57"]
-    interrupt --> ports
-    ports --> chips["Two Astrocade custom I/O chips"]
-```
+![Gorf sound architecture](images/gorf-sound-architecture.svg)
 
 | Custom I/O chip | Sound registers | RAM work array |
 | --- | --- | --- |
@@ -374,15 +360,7 @@ six-bit phoneme number in bits 0-5 and inflection in bits 6-7. An eight-entry
 circular queue at `$D112-$D121` holds 16-bit record pointers; interrupt service
 advances the active record and writes phonemes through port `$17`.
 
-```mermaid
-flowchart TD
-    request["TERSE speech key"] --> language{"Language setting"}
-    language -->|English| queue["Queue $D112-$D121"]
-    language -->|Foreign| x11["X11 translator at $C000"]
-    x11 --> queue
-    queue --> service["Interrupt-driven PHONE service"]
-    service --> sc01["SC-01 through port $17"]
-```
+![Gorf speech architecture](images/gorf-speech-architecture.svg)
 
 Program 2 contains 36 resident English speech keys, including the six rank
 fragments used with “Space.” Compound selectors build mission introductions,
